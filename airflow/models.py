@@ -45,7 +45,7 @@ import textwrap
 import traceback
 import warnings
 import hashlib
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qsl
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
@@ -591,6 +591,8 @@ class Connection(Base, LoggingMixin):
         self.login = temp_uri.username
         self.password = temp_uri.password
         self.port = temp_uri.port
+        if temp_uri.query:
+            self.extra = json.dumps(dict(parse_qsl(temp_uri.query)))
 
     def get_password(self):
         if self._password and self.is_encrypted:
