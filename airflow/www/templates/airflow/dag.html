@@ -94,7 +94,7 @@
           Code
         </a>
       </li>
-      <li>
+      <li style="display: none;">
         <a href="{{ url_for("airflow.trigger", dag_id=dag.dag_id, origin=url_for("airflow.tree", dag_id=dag.dag_id)) }}"
           onclick="return confirmTriggerDag(this, '{{ dag.safe_dag_id }}')">
           <span class="glyphicon glyphicon-play-circle" aria-hidden="true"></span>
@@ -107,7 +107,7 @@
           Refresh
         </a>
       </li>
-      <li>
+      <li style="display: none;">
         <a href="{{ url_for("airflow.delete", dag_id=dag.dag_id, root=root) }}"
         onclick="return confirmDeleteDag(this, '{{ dag.safe_dag_id }}')">
         <span class="glyphicon glyphicon-remove-circle" style="color:red" aria-hidden="true"></span>
