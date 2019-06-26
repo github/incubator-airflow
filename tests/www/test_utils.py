@@ -18,15 +18,18 @@
 # under the License.
 
 import functools
+import unittest
+from unittest import mock
+from parameterized import parameterized
+from urllib.parse import parse_qs
 
 from bs4 import BeautifulSoup
-import mock
 import six
-from six.moves.urllib.parse import parse_qs
 
 from airflow.www import app as application
 
 from airflow.www import utils
+from tests.test_utils.config import conf_vars
 
 if six.PY2:
     # Need `assertRegex` back-ported from unittest2
@@ -115,14 +118,38 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual('search=bash_',
                          utils.get_params(search='bash_'))
 
-    def test_params_showPaused_true(self):
-        """Should detect True as default for showPaused"""
-        self.assertEqual('',
-                         utils.get_params(showPaused=True))
+    @parameterized.expand([
+        (True, False, ''),
+        (False, True, ''),
+        (True, True, 'showPaused=True'),
+        (False, False, 'showPaused=False'),
+        (None, True, ''),
+        (None, False, ''),
+    ])
+    def test_params_showPaused(self, show_paused, hide_by_default, expected_result):
+        with conf_vars({('webserver', 'hide_paused_dags_by_default'): str(hide_by_default)}):
+            self.assertEqual(expected_result,
+                             utils.get_params(showPaused=show_paused))
 
-    def test_params_showPaused_false(self):
-        self.assertEqual('showPaused=False',
-                         utils.get_params(showPaused=False))
+    @parameterized.expand([
+        (True, False, True),
+        (False, True, True),
+        (True, True, False),
+        (False, False, False),
+        (None, True, True),
+        (None, False, True),
+    ])
+    def test_should_remove_show_paused_from_url_params(self, show_paused,
+                                                       hide_by_default, expected_result):
+        with conf_vars({('webserver', 'hide_paused_dags_by_default'): str(hide_by_default)}):
+
+            self.assertEqual(
+                expected_result,
+                utils._should_remove_show_paused_from_url_params(
+                    show_paused,
+                    hide_by_default
+                )
+            )
 
     def test_params_none_and_zero(self):
         qs = utils.get_params(a=0, b=None)
