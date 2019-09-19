@@ -28,3 +28,4 @@ This is a fork of [Airflow 1.10.3](https://github.com/apache/airflow/tree/1.10.3
 - Hide `Delete` button from the main Airflow page
 - Fix `bail.` button onclick action to redirect correctly to the DAG page
 - Fix `Mark Success` & `Mark Failed` functionality, it was not using the right `Future`, `Past`, `Downstream` & `Upstream` toggles.
+- Cherry pick changes to fix pagination when `showPaused=True` and `hide_paused_dags_by_default=True` https://github.com/apache/airflow/pull/6100
