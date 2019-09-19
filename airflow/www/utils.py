@@ -97,8 +97,8 @@ class DataProfilingMixin(object):
 
 
 def get_params(**kwargs):
-    hide_paused_dags_by_default = conf.getboolean('webserver',
-                                                  'hide_paused_dags_by_default')
+    hide_paused_dags_by_default = configuration.conf.getboolean('webserver',
+                                                                'hide_paused_dags_by_default')
     if 'showPaused' in kwargs:
         show_paused_dags_url_param = kwargs['showPaused']
         if _should_remove_show_paused_from_url_params(
