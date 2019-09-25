@@ -2363,7 +2363,7 @@ class TaskInstanceTest(unittest.TestCase):
         delay = datetime.timedelta(seconds=1)
         max_delay = datetime.timedelta(minutes=60)
 
-         dag = models.DAG(dag_id='fail_dag')
+        dag = models.DAG(dag_id='fail_dag')
         task = BashOperator(
             task_id='task_with_exp_backoff_and_short_time_interval',
             bash_command='exit 1',
