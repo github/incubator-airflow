@@ -2378,7 +2378,7 @@ class TaskInstanceTest(unittest.TestCase):
             task=task, execution_date=DEFAULT_DATE)
         ti.end_date = pendulum.instance(timezone.utcnow())
 
-         dt = ti.next_retry_datetime()
+        dt = ti.next_retry_datetime()
         # between 1 * 2^0.5 and 1 * 2^1 (15 and 30)
         period = ti.end_date.add(seconds=1) - ti.end_date.add(seconds=15)
         self.assertTrue(dt in period)
