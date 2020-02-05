@@ -802,7 +802,8 @@ class SchedulerJob(BaseJob):
                     dag.handle_callback(dr, success=False, reason='dagrun_timeout',
                                         session=session)
                     timedout_runs += 1
-            session.commit()
+                    session.merge(dr)
+                    session.commit()
             if len(active_runs) - timedout_runs >= dag.max_active_runs:
                 return
 
