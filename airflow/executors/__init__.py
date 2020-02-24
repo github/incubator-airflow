@@ -19,7 +19,7 @@
 
 import sys
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow import configuration
+from airflow.configuration import conf
 from airflow.exceptions import AirflowException
 from airflow.executors.base_executor import BaseExecutor # noqa
 from airflow.executors.local_executor import LocalExecutor
@@ -36,14 +36,14 @@ def _integrate_plugins():
         globals()[executors_module._name] = executors_module
 
 
-def GetDefaultExecutor():
+def get_default_executor():
     """Creates a new instance of the configured executor if none exists and returns it"""
     global DEFAULT_EXECUTOR
 
     if DEFAULT_EXECUTOR is not None:
         return DEFAULT_EXECUTOR
 
-    executor_name = configuration.conf.get('core', 'EXECUTOR')
+    executor_name = conf.get('core', 'EXECUTOR')
 
     DEFAULT_EXECUTOR = _get_executor(executor_name)
 
@@ -60,6 +60,7 @@ class Executors:
     DaskExecutor = "DaskExecutor"
     MesosExecutor = "MesosExecutor"
     KubernetesExecutor = "KubernetesExecutor"
+    DebugExecutor = "DebugExecutor"
 
 
 def _get_executor(executor_name):
@@ -84,6 +85,9 @@ def _get_executor(executor_name):
     elif executor_name == Executors.KubernetesExecutor:
         from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
         return KubernetesExecutor()
+    elif executor_name == Executors.DebugExecutor:
+        from airflow.executors.debug_executor import DebugExecutor
+        return DebugExecutor()
     else:
         # Loading plugins
         _integrate_plugins()

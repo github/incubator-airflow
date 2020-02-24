@@ -1,4 +1,4 @@
-..  Licensed to the Apache Software Foundation (ASF) under one
+ .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
     regarding copyright ownership.  The ASF licenses this file
@@ -6,14 +6,16 @@
     "License"); you may not use this file except in compliance
     with the License.  You may obtain a copy of the License at
 
-..    http://www.apache.org/licenses/LICENSE-2.0
+ ..   http://www.apache.org/licenses/LICENSE-2.0
 
-..  Unless required by applicable law or agreed to in writing,
+ .. Unless required by applicable law or agreed to in writing,
     software distributed under the License is distributed on an
     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
     KIND, either express or implied.  See the License for the
     specific language governing permissions and limitations
     under the License.
+
+
 
 Installation
 ------------
@@ -27,11 +29,11 @@ The easiest way to install the latest stable version of Airflow is with ``pip``:
 
     pip install apache-airflow
 
-You can also install Airflow with support for extra features like ``s3`` or ``postgres``:
+You can also install Airflow with support for extra features like ``gcp`` or ``postgres``:
 
 .. code-block:: bash
 
-    pip install apache-airflow[postgres,s3]
+    pip install apache-airflow[postgres,gcp]
 
 Extra Packages
 ''''''''''''''
@@ -56,6 +58,10 @@ Here's the list of the subpackages and what they enable:
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | async               | ``pip install 'apache-airflow[async]'``             | Async worker classes for Gunicorn                                    |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
+| aws                 | ``pip install 'apache-airflow[aws]'``               | Amazon Web Services                                                  |
++---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
+| azure               | ``pip install 'apache-airflow[azure]'``             | Microsoft Azure                                                      |
++---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | celery              | ``pip install 'apache-airflow[celery]'``            | CeleryExecutor                                                       |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | cloudant            | ``pip install 'apache-airflow[cloudant]'``          | Cloudant hook                                                        |
@@ -68,8 +74,7 @@ Here's the list of the subpackages and what they enable:
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | druid               | ``pip install 'apache-airflow[druid]'``             | Druid related operators & hooks                                      |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
-| gcp_api             | ``pip install 'apache-airflow[gcp_api]'``           | Google Cloud Platform hooks and operators                            |
-|                     |                                                     | (using ``google-api-python-client``)                                 |
+| gcp                 | ``pip install 'apache-airflow[gcp]'``               | Google Cloud Platform                                                |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | github_enterprise   | ``pip install 'apache-airflow[github_enterprise]'`` | GitHub Enterprise auth backend                                       |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
@@ -104,13 +109,13 @@ Here's the list of the subpackages and what they enable:
 | postgres            | ``pip install 'apache-airflow[postgres]'``          | PostgreSQL operators and hook, support as an                         |
 |                     |                                                     | Airflow backend                                                      |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
+| presto              | ``pip install 'apache-airflow[presto]'``            | All Presto related operators & hooks                                 |
++---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | qds                 | ``pip install 'apache-airflow[qds]'``               | Enable QDS (Qubole Data Service) support                             |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | rabbitmq            | ``pip install 'apache-airflow[rabbitmq]'``          | RabbitMQ support as a Celery backend                                 |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | redis               | ``pip install 'apache-airflow[redis]'``             | Redis hooks and sensors                                              |
-+---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
-| s3                  | ``pip install 'apache-airflow[s3]'``                | ``S3KeySensor``, ``S3PrefixSensor``                                  |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+
 | samba               | ``pip install apache-airflow[samba]'``              | :class:`airflow.operators.hive_to_samba_operator.Hive2SambaOperator` |
 +---------------------+-----------------------------------------------------+----------------------------------------------------------------------+

@@ -19,8 +19,10 @@
 
 
 import unittest
+
+import pytest
+
 from airflow import DAG
-from airflow import configuration
 from airflow.contrib.hooks.redis_hook import RedisHook
 from airflow.contrib.sensors.redis_key_sensor import RedisKeySensor
 from airflow.utils import timezone
@@ -28,10 +30,10 @@ from airflow.utils import timezone
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)
 
 
+@pytest.mark.integration("redis")
 class TestRedisSensor(unittest.TestCase):
 
     def setUp(self):
-        configuration.load_test_config()
         args = {
             'owner': 'airflow',
             'start_date': DEFAULT_DATE

@@ -51,9 +51,11 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
     :param schema_fields: If set, the schema field list as defined here:
         https://cloud.google.com/bigquery/docs/reference/v2/jobs#configuration.load
         Should not be set when source_format is 'DATASTORE_BACKUP'.
+        Parameter must be defined if 'schema_object' is null and autodetect is False.
     :type schema_fields: list
     :param schema_object: If set, a GCS object path pointing to a .json file that
         contains the schema for the table. (templated)
+        Parameter must be defined if 'schema_fields' is null and autodetect is False.
     :type schema_object: str
     :param source_format: File format to export.
     :type source_format: str
@@ -90,6 +92,10 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
         invalid error is returned in the job result. Only applicable to CSV, ignored
         for other formats.
     :type allow_jagged_rows: bool
+    :param encoding: The character encoding of the data. See:
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs#configuration.query.tableDefinitions.(key).csvOptions.encoding
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#externalDataConfiguration.csvOptions.encoding
+    :type encoding: str
     :param max_id_key: If set, the name of a column in the BigQuery table
         that's to be loaded. This will be used to select the MAX value from
         BigQuery after the load occurs. The results will be returned by the
@@ -125,8 +131,17 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
         Not applicable for external tables.
     :type cluster_fields: list[str]
     :param autodetect: [Optional] Indicates if we should automatically infer the
-        options and schema for CSV and JSON sources. (Default: ``False``)
+        options and schema for CSV and JSON sources. (Default: ``True``).
+        Parameter must be setted to True if 'schema_fields' and 'schema_object' are undefined.
+        It is suggested to set to True if table are create outside of Airflow.
     :type autodetect: bool
+    :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+        **Example**: ::
+
+            encryption_configuration = {
+                "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+            }
+    :type encryption_configuration: dict
     """
     template_fields = ('bucket', 'source_objects',
                        'schema_object', 'destination_project_dataset_table')
@@ -151,6 +166,7 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
                  ignore_unknown_values=False,
                  allow_quoted_newlines=False,
                  allow_jagged_rows=False,
+                 encoding="UTF-8",
                  max_id_key=None,
                  bigquery_conn_id='bigquery_default',
                  google_cloud_storage_conn_id='google_cloud_default',
@@ -160,7 +176,8 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
                  external_table=False,
                  time_partitioning=None,
                  cluster_fields=None,
-                 autodetect=False,
+                 autodetect=True,
+                 encryption_configuration=None,
                  *args, **kwargs):
 
         super(GoogleCloudStorageToBigQueryOperator, self).__init__(*args, **kwargs)
@@ -189,6 +206,7 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
         self.allow_quoted_newlines = allow_quoted_newlines
         self.allow_jagged_rows = allow_jagged_rows
         self.external_table = external_table
+        self.encoding = encoding
 
         self.max_id_key = max_id_key
         self.bigquery_conn_id = bigquery_conn_id
@@ -200,6 +218,7 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
         self.time_partitioning = time_partitioning
         self.cluster_fields = cluster_fields
         self.autodetect = autodetect
+        self.encryption_configuration = encryption_configuration
 
     def execute(self, context):
         bq_hook = BigQueryHook(bigquery_conn_id=self.bigquery_conn_id,
@@ -241,7 +260,9 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
                 ignore_unknown_values=self.ignore_unknown_values,
                 allow_quoted_newlines=self.allow_quoted_newlines,
                 allow_jagged_rows=self.allow_jagged_rows,
-                src_fmt_configs=self.src_fmt_configs
+                encoding=self.encoding,
+                src_fmt_configs=self.src_fmt_configs,
+                encryption_configuration=self.encryption_configuration
             )
         else:
             cursor.run_load(
@@ -259,10 +280,12 @@ class GoogleCloudStorageToBigQueryOperator(BaseOperator):
                 ignore_unknown_values=self.ignore_unknown_values,
                 allow_quoted_newlines=self.allow_quoted_newlines,
                 allow_jagged_rows=self.allow_jagged_rows,
+                encoding=self.encoding,
                 schema_update_options=self.schema_update_options,
                 src_fmt_configs=self.src_fmt_configs,
                 time_partitioning=self.time_partitioning,
-                cluster_fields=self.cluster_fields)
+                cluster_fields=self.cluster_fields,
+                encryption_configuration=self.encryption_configuration)
 
         if self.max_id_key:
             cursor.execute('SELECT MAX({}) FROM {}'.format(

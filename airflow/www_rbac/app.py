@@ -19,19 +19,20 @@
 #
 import logging
 import socket
+from datetime import timedelta
 from typing import Any
 
 import six
-from flask import Flask
+from flask import Flask, session as flask_session
 from flask_appbuilder import AppBuilder, SQLA
 from flask_caching import Cache
 from flask_wtf.csrf import CSRFProtect
 from six.moves.urllib.parse import urlparse
-from werkzeug.wsgi import DispatcherMiddleware
-from werkzeug.contrib.fixers import ProxyFix
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
-from airflow import settings
-from airflow import configuration as conf
+from airflow import settings, version
+from airflow.configuration import conf
 from airflow.logging_config import configure_logging
 from airflow.www_rbac.static_config import configure_manifest_files
 
@@ -45,8 +46,19 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
     global app, appbuilder
     app = Flask(__name__)
     if conf.getboolean('webserver', 'ENABLE_PROXY_FIX'):
-        app.wsgi_app = ProxyFix(app.wsgi_app)
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            num_proxies=conf.get("webserver", "PROXY_FIX_NUM_PROXIES", fallback=None),
+            x_for=conf.getint("webserver", "PROXY_FIX_X_FOR", fallback=1),
+            x_proto=conf.getint("webserver", "PROXY_FIX_X_PROTO", fallback=1),
+            x_host=conf.getint("webserver", "PROXY_FIX_X_HOST", fallback=1),
+            x_port=conf.getint("webserver", "PROXY_FIX_X_PORT", fallback=1),
+            x_prefix=conf.getint("webserver", "PROXY_FIX_X_PREFIX", fallback=1)
+        )
     app.secret_key = conf.get('webserver', 'SECRET_KEY')
+
+    session_lifetime_days = conf.getint('webserver', 'SESSION_LIFETIME_DAYS', fallback=30)
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=session_lifetime_days)
 
     app.config.from_pyfile(settings.WEBSERVER_CONFIG, silent=True)
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -66,7 +78,7 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
 
     from airflow import api
     api.load_auth()
-    api.api_auth.init_app(app)
+    api.API_AUTH.api_auth.init_app(app)
 
     # flake8: noqa: F841
     cache = Cache(app=app, config={'CACHE_TYPE': 'filesystem', 'CACHE_DIR': '/tmp'})
@@ -78,7 +90,6 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
     configure_manifest_files(app)
 
     with app.app_context():
-
         from airflow.www_rbac.security import AirflowSecurityManager
         security_manager_class = app.config.get('SECURITY_MANAGER_CLASS') or \
             AirflowSecurityManager
@@ -96,10 +107,11 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
 
         def init_views(appbuilder):
             from airflow.www_rbac import views
+            # Remove the session from scoped_session registry to avoid
+            # reusing a session with a disconnected connection
+            appbuilder.session.remove()
             appbuilder.add_view_no_menu(views.Airflow())
             appbuilder.add_view_no_menu(views.DagModelView())
-            appbuilder.add_view_no_menu(views.ConfigurationView())
-            appbuilder.add_view_no_menu(views.VersionView())
             appbuilder.add_view(views.DagRunModelView,
                                 "DAG Runs",
                                 category="Browse",
@@ -116,8 +128,8 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
             appbuilder.add_view(views.TaskInstanceModelView,
                                 "Task Instances",
                                 category="Browse")
-            appbuilder.add_link("Configurations",
-                                href='/configuration',
+            appbuilder.add_view(views.ConfigurationView,
+                                "Configurations",
                                 category="Admin",
                                 category_icon="fa-user")
             appbuilder.add_view(views.ConnectionModelView,
@@ -132,15 +144,21 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
             appbuilder.add_view(views.XComModelView,
                                 "XComs",
                                 category="Admin")
+
+            if "dev" in version.version:
+                airflow_doc_site = "https://airflow.readthedocs.io/en/latest"
+            else:
+                airflow_doc_site = 'https://airflow.apache.org/docs/{}'.format(version.version)
+
             appbuilder.add_link("Documentation",
-                                href='https://airflow.apache.org/',
+                                href=airflow_doc_site,
                                 category="Docs",
                                 category_icon="fa-cube")
             appbuilder.add_link("GitHub",
                                 href='https://github.com/apache/airflow',
                                 category="Docs")
-            appbuilder.add_link('Version',
-                                href='/version',
+            appbuilder.add_view(views.VersionView,
+                                'Version',
                                 category='About',
                                 category_icon='fa-th')
 
@@ -178,8 +196,9 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
         init_views(appbuilder)
         init_plugin_blueprints(app)
 
-        security_manager = appbuilder.sm
-        security_manager.sync_roles()
+        if conf.getboolean('webserver', 'UPDATE_FAB_PERMS'):
+            security_manager = appbuilder.sm
+            security_manager.sync_roles()
 
         from airflow.www_rbac.api.experimental import endpoints as e
         # required for testing purposes otherwise the module retains
@@ -194,15 +213,51 @@ def create_app(config=None, session=None, testing=False, app_name="Airflow"):
         app.register_blueprint(e.api_experimental, url_prefix='/api/experimental')
 
         @app.context_processor
-        def jinja_globals():
-            return {
-                'hostname': socket.getfqdn(),
+        def jinja_globals():  # pylint: disable=unused-variable
+
+            globals = {
+                'hostname': socket.getfqdn() if conf.getboolean(
+                    'webserver', 'EXPOSE_HOSTNAME', fallback=True) else 'redact',
                 'navbar_color': conf.get('webserver', 'NAVBAR_COLOR'),
+                'log_fetch_delay_sec': conf.getint(
+                    'webserver', 'log_fetch_delay_sec', fallback=2),
+                'log_auto_tailing_offset': conf.getint(
+                    'webserver', 'log_auto_tailing_offset', fallback=30),
+                'log_animation_speed': conf.getint(
+                    'webserver', 'log_animation_speed', fallback=1000)
             }
+
+            if 'analytics_tool' in conf.getsection('webserver'):
+                globals.update({
+                    'analytics_tool': conf.get('webserver', 'ANALYTICS_TOOL'),
+                    'analytics_id': conf.get('webserver', 'ANALYTICS_ID')
+                })
+
+            return globals
 
         @app.teardown_appcontext
         def shutdown_session(exception=None):
             settings.Session.remove()
+
+        @app.before_request
+        def before_request():
+            _force_log_out_after = conf.getint('webserver', 'FORCE_LOG_OUT_AFTER', fallback=0)
+            if _force_log_out_after > 0:
+                flask.session.permanent = True
+                app.permanent_session_lifetime = datetime.timedelta(minutes=_force_log_out_after)
+                flask.session.modified = True
+                flask.g.user = flask_login.current_user
+
+        @app.after_request
+        def apply_caching(response):
+            _x_frame_enabled = conf.getboolean('webserver', 'X_FRAME_ENABLED', fallback=True)
+            if not _x_frame_enabled:
+                response.headers["X-Frame-Options"] = "DENY"
+            return response
+
+        @app.before_request
+        def make_session_permanent():
+            flask_session.permanent = True
 
     return app, appbuilder
 

@@ -1,4 +1,4 @@
-..  Licensed to the Apache Software Foundation (ASF) under one
+ .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
     regarding copyright ownership.  The ASF licenses this file
@@ -6,14 +6,16 @@
     "License"); you may not use this file except in compliance
     with the License.  You may obtain a copy of the License at
 
-..    http://www.apache.org/licenses/LICENSE-2.0
+ ..   http://www.apache.org/licenses/LICENSE-2.0
 
-..  Unless required by applicable law or agreed to in writing,
+ .. Unless required by applicable law or agreed to in writing,
     software distributed under the License is distributed on an
     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
     KIND, either express or implied.  See the License for the
     specific language governing permissions and limitations
     under the License.
+
+
 
 Google Cloud Vision Operators
 =============================
@@ -95,7 +97,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_add_product_to_product_set_template_fields]
@@ -169,7 +171,7 @@ The result can be extracted from XCOM:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_annotate_image_template_fields]
@@ -190,9 +192,9 @@ Creates and returns a new product resource.
 
 Possible errors regarding the :code:`Product` object provided:
 
-- Returns INVALID_ARGUMENT if `display_name` is missing or longer than 4096 characters.
-- Returns INVALID_ARGUMENT if `description` is longer than 4096 characters.
-- Returns INVALID_ARGUMENT if `product_category` is missing or invalid.
+- Returns INVALID_ARGUMENT if ``display_name`` is missing or longer than 4096 characters.
+- Returns INVALID_ARGUMENT if ``description`` is longer than 4096 characters.
+- Returns INVALID_ARGUMENT if ``product_category`` is missing or invalid.
 
 For parameter definition, take a look at
 :class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionProductCreateOperator`
@@ -252,7 +254,7 @@ Or it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_product_create_template_fields]
@@ -319,7 +321,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_product_delete_template_fields]
@@ -340,7 +342,7 @@ Gets information associated with a :code:`Product`.
 
 Possible errors:
 
-- Returns NOT_FOUND if the `Product` does not exist.
+- Returns NOT_FOUND if the ``Product`` does not exist.
 
 For parameter definition, take a look at
 :class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionProductGetOperator`
@@ -382,7 +384,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_product_get_template_fields]
@@ -459,7 +461,7 @@ Or it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_productset_create_template_fields]
@@ -520,7 +522,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_productset_delete_template_fields]
@@ -579,7 +581,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_productset_get_template_fields]
@@ -599,16 +601,16 @@ CloudVisionProductSetUpdateOperator
 Makes changes to a :code:`ProductSet` resource. Only :code:`display_name` can be updated
 currently.
 
-.. note:: To locate the `ProductSet` resource, its `name` in the form
+.. note:: To locate the ``ProductSet`` resource, its ``name`` in the form
   ``projects/PROJECT_ID/locations/LOC_ID/productSets/PRODUCT_SET_ID`` is necessary.
 
-You can provide the `name` directly as an attribute of the `product_set` object.
-However, you can leave it blank and provide `location` and `product_set_id` instead (and
-optionally `project_id` - if not present, the connection default will be used) and the
-`name` will be created by the operator itself.
+You can provide the ``name`` directly as an attribute of the ``product_set`` object.
+However, you can leave it blank and provide ``location`` and ``product_set_id`` instead (and
+optionally ``project_id`` - if not present, the connection default will be used) and the
+``name`` will be created by the operator itself.
 
-This mechanism exists for your convenience, to allow leaving the `project_id` empty and
-having Airflow use the connection default `project_id`.
+This mechanism exists for your convenience, to allow leaving the ``project_id`` empty and
+having Airflow use the connection default ``project_id``.
 
 For parameter definition, take a look at
 :class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionProductSetUpdateOperator`
@@ -664,7 +666,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_productset_update_template_fields]
@@ -686,25 +688,25 @@ Makes changes to a :code:`Product` resource. Only the :code:`display_name`,
 If labels are updated, the change will not be reflected in queries until the next index
 time.
 
-.. note:: To locate the `Product` resource, its `name` in the form
+.. note:: To locate the ``Product`` resource, its ``name`` in the form
   ``projects/PROJECT_ID/locations/LOC_ID/products/PRODUCT_ID`` is necessary.
 
-You can provide the `name` directly as an attribute of the `product` object. However, you
-can leave it blank and provide `location` and `product_id` instead (and optionally
-`project_id` - if not present, the connection default will be used) and the `name` will
+You can provide the ``name`` directly as an attribute of the ``product`` object. However, you
+can leave it blank and provide ``location`` and ``product_id`` instead (and optionally
+``project_id`` - if not present, the connection default will be used) and the ``name`` will
 be created by the operator itself.
 
-This mechanism exists for your convenience, to allow leaving the `project_id` empty and
-having Airflow use the connection default `project_id`.
+This mechanism exists for your convenience, to allow leaving the ``project_id`` empty and
+having Airflow use the connection default ``project_id``.
 
 Possible errors:
 
-- Returns NOT_FOUND if the `Product` does not exist.
-- Returns INVALID_ARGUMENT if `display_name` is present in `update_mask` but is missing
+- Returns NOT_FOUND if the ``Product`` does not exist.
+- Returns INVALID_ARGUMENT if ``display_name`` is present in ``update_mask`` but is missing
   from the request or longer than 4096 characters.
-- Returns INVALID_ARGUMENT if `description` is present in `update_mask` but is longer than
+- Returns INVALID_ARGUMENT if ``description`` is present in ``update_mask`` but is longer than
   4096 characters.
-- Returns INVALID_ARGUMENT if `product_category` is present in `update_mask`.
+- Returns INVALID_ARGUMENT if ``product_category`` is present in ``update_mask``.
 
 For parameter definition, take a look at
 :class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionProductUpdateOperator`
@@ -758,7 +760,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_product_update_template_fields]
@@ -835,7 +837,7 @@ Or it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_reference_image_create_template_fields]
@@ -920,7 +922,7 @@ Otherwise it can be specified explicitly:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
     :language: python
     :dedent: 4
     :start-after: [START vision_remove_product_from_product_set_template_fields]
@@ -931,3 +933,252 @@ More information
 
 See `Google Cloud Vision Remove Product From Product Set documentation
 <https://googleapis.github.io/google-cloud-python/latest/vision/gapic/v1/api.html#google.cloud.vision_v1.ProductSearchClient.remove_product_from_product_set>`_.
+
+
+.. _howto/operator:CloudVisionDetectTextOperator:
+
+CloudVisionDetectTextOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Run text detection for an image.
+
+For parameter definition, take a look at
+:class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectTextOperator`
+
+Arguments
+"""""""""
+
+Some arguments in the example DAG are taken from the OS environment variables:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_annotate_image_url]
+      :end-before: [END howto_operator_vision_annotate_image_url]
+
+
+Using the operator
+""""""""""""""""""
+
+We are using the :class:`Retry` objects from
+Google libraries:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_retry_import]
+      :end-before: [END howto_operator_vision_retry_import]
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_text]
+      :end-before: [END howto_operator_vision_detect_text]
+
+The result can be extracted from XCOM:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_text_result]
+      :end-before: [END howto_operator_vision_detect_text_result]
+
+
+Templating
+""""""""""
+
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+    :language: python
+    :dedent: 4
+    :start-after: [START vision_detect_text_set_template_fields]
+    :end-before: [END vision_detect_text_set_template_fields]
+
+More information
+""""""""""""""""
+
+See `Google Cloud Vision Text Detection documentation
+<https://googleapis.github.io/google-cloud-python/latest/vision/gapic/v1/api.html#google.cloud.vision_v1.ImageAnnotatorClient.text_detection>`_.
+
+.. _howto/operator:CloudVisionDetectDocumentTextOperator:
+
+CloudVisionDetectDocumentTextOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Run document text detection for an image.
+
+For parameter definition, take a look at
+:class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectDocumentTextOperator`
+
+Arguments
+"""""""""
+
+Some arguments in the example DAG are taken from the OS environment variables:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_annotate_image_url]
+      :end-before: [END howto_operator_vision_annotate_image_url]
+
+
+Using the operator
+""""""""""""""""""
+
+We are using the :class:`Retry` objects from
+Google libraries:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_retry_import]
+      :end-before: [END howto_operator_vision_retry_import]
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_document_detect_text]
+      :end-before: [END howto_operator_vision_document_detect_text]
+
+The result can be extracted from XCOM:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_document_detect_text_result]
+      :end-before: [END howto_operator_vision_document_detect_text_result]
+
+
+Templating
+""""""""""
+
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+    :language: python
+    :dedent: 4
+    :start-after: [START vision_document_detect_text_set_template_fields]
+    :end-before: [END vision_document_detect_text_set_template_fields]
+
+More information
+""""""""""""""""
+
+See `Google Cloud Vision Document Text Detection documentation
+<https://googleapis.github.io/google-cloud-python/latest/vision/gapic/v1/api.html#google.cloud.vision_v1.ImageAnnotatorClient.document_text_detection>`_.
+
+.. _howto/operator:CloudVisionDetectImageLabelsOperator:
+
+CloudVisionDetectImageLabelsOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Run image label detection for an image.
+
+For parameter definition, take a look at
+:class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectImageLabelsOperator`
+
+Arguments
+"""""""""
+
+Some arguments in the example DAG are taken from the OS environment variables:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_annotate_image_url]
+      :end-before: [END howto_operator_vision_annotate_image_url]
+
+
+Using the operator
+""""""""""""""""""
+
+We are using the :class:`Retry` objects from
+Google libraries:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_retry_import]
+      :end-before: [END howto_operator_vision_retry_import]
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_labels]
+      :end-before: [END howto_operator_vision_detect_labels]
+
+The result can be extracted from XCOM:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_labels_result]
+      :end-before: [END howto_operator_vision_detect_labels_result]
+
+
+Templating
+""""""""""
+
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+    :language: python
+    :dedent: 4
+    :start-after: [START vision_detect_labels_template_fields]
+    :end-before: [END vision_detect_labels_template_fields]
+
+More information
+""""""""""""""""
+
+See `Google Cloud Vision Label Detection documentation
+<https://googleapis.github.io/google-cloud-python/latest/vision/gapic/v1/api.html#google.cloud.vision_v1.ImageAnnotatorClient.label_detection>`_.
+
+.. _howto/operator:CloudVisionDetectImageSafeSearchOperator:
+
+CloudVisionDetectImageSafeSearchOperator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Run image label detection for an image.
+
+For parameter definition, take a look at
+:class:`~airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectImageSafeSearchOperator`
+
+Arguments
+"""""""""
+
+Some arguments in the example DAG are taken from the OS environment variables:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_annotate_image_url]
+      :end-before: [END howto_operator_vision_annotate_image_url]
+
+
+Using the operator
+""""""""""""""""""
+
+We are using the :class:`Retry` objects from
+Google libraries:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :start-after: [START howto_operator_vision_retry_import]
+      :end-before: [END howto_operator_vision_retry_import]
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_safe_search]
+      :end-before: [END howto_operator_vision_detect_safe_search]
+
+The result can be extracted from XCOM:
+
+.. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_vision.py
+      :language: python
+      :dedent: 4
+      :start-after: [START howto_operator_vision_detect_safe_search_result]
+      :end-before: [END howto_operator_vision_detect_safe_search_result]
+
+
+Templating
+""""""""""
+
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_vision_operator.py
+    :language: python
+    :dedent: 4
+    :start-after: [START vision_detect_safe_search_template_fields]
+    :end-before: [END vision_detect_safe_search_template_fields]
+
+More information
+""""""""""""""""
+
+See `Google Cloud Vision Safe Search Detection documentation
+<https://googleapis.github.io/google-cloud-python/latest/vision/gapic/v1/api.html#google.cloud.vision_v1.ImageAnnotatorClient.safe_search_detection>`_.

@@ -70,10 +70,15 @@ class SparkSubmitOperator(BaseOperator):
     :type keytab: str
     :param principal: The name of the kerberos principal used for keytab (templated)
     :type principal: str
+    :param proxy_user: User to impersonate when submitting the application (templated)
+    :type proxy_user: str
     :param name: Name of the job (default airflow-spark). (templated)
     :type name: str
     :param num_executors: Number of executors to launch
     :type num_executors: int
+    :param status_poll_interval: Seconds to wait between polls of driver status in cluster
+        mode (Default: 1)
+    :type status_poll_interval: int
     :param application_args: Arguments for the application being submitted (templated)
     :type application_args: list
     :param env_vars: Environment variables for spark-submit. It supports yarn and k8s mode too. (templated)
@@ -82,10 +87,10 @@ class SparkSubmitOperator(BaseOperator):
     :type verbose: bool
     :param spark_binary: The command to use for spark submit.
                          Some distros may use spark2-submit.
-    :type spark_binary: string
+    :type spark_binary: str
     """
     template_fields = ('_application', '_conf', '_files', '_py_files', '_jars', '_driver_class_path',
-                       '_packages', '_exclude_packages', '_keytab', '_principal', '_name',
+                       '_packages', '_exclude_packages', '_keytab', '_principal', '_proxy_user', '_name',
                        '_application_args', '_env_vars')
     ui_color = WEB_COLORS['LIGHTORANGE']
 
@@ -109,8 +114,10 @@ class SparkSubmitOperator(BaseOperator):
                  driver_memory=None,
                  keytab=None,
                  principal=None,
+                 proxy_user=None,
                  name='airflow-spark',
                  num_executors=None,
+                 status_poll_interval=1,
                  application_args=None,
                  env_vars=None,
                  verbose=False,
@@ -135,8 +142,10 @@ class SparkSubmitOperator(BaseOperator):
         self._driver_memory = driver_memory
         self._keytab = keytab
         self._principal = principal
+        self._proxy_user = proxy_user
         self._name = name
         self._num_executors = num_executors
+        self._status_poll_interval = status_poll_interval
         self._application_args = application_args
         self._env_vars = env_vars
         self._verbose = verbose
@@ -166,8 +175,10 @@ class SparkSubmitOperator(BaseOperator):
             driver_memory=self._driver_memory,
             keytab=self._keytab,
             principal=self._principal,
+            proxy_user=self._proxy_user,
             name=self._name,
             num_executors=self._num_executors,
+            status_poll_interval=self._status_poll_interval,
             application_args=self._application_args,
             env_vars=self._env_vars,
             verbose=self._verbose,

@@ -40,7 +40,7 @@ ENV_FILE_RETRIEVER = os.path.join(AIRFLOW_PARENT_FOLDER,
 
 
 # Retrieve environment variables from parent directory retriever - it should be
-# in the path ${AIRFLOW_SOURCE_DIR}/../../get_system_test_environment_variables.py
+# in the path ${AIRFLOW_SOURCES}/../../get_system_test_environment_variables.py
 # and it should print all the variables in form of key=value to the stdout
 class RetrieveVariables:
     @staticmethod
@@ -143,6 +143,7 @@ class DagGcpSystemTestCase(BaseGcpSystemTestCase):
         """
         Returns all file names (note - file names not paths)
         that have the same base name as the .py dag file (for example dag_name.sql etc.)
+
         :param path: path to the dag file.
         :return: list of files matching the base name
         """

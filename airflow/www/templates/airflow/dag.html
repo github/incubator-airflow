@@ -1,20 +1,22 @@
 {#
-  Licensed to the Apache Software Foundation (ASF) under one or more
-  contributor license agreements.  See the NOTICE file distributed with
-  this work for additional information regarding copyright ownership.
-  The ASF licenses this file to You under the Apache License, Version 2.0
-  (the "License"); you may not use this file except in compliance with
-  the License.  You may obtain a copy of the License at
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
 #}
+
 {% extends "airflow/master.html" %}
 {% import 'admin/lib.html' as lib with context %}
 
@@ -153,12 +155,19 @@
             View Log
           </button>
           <hr/>
-          <div>
+          <div id="dag_dl_logs">
             <label style="display:inline"> Download Log (by attempts): </label>
             <ul class="nav nav-pills" role="tablist" id="try_index" style="display:inline">
             </ul>
+            <hr/>
           </div>
-          <hr/>
+          <div id="dag_es_logs">
+            <label style="display:inline"> View Logs in Elasticsearch (by attempts): </label>
+            <ul class="nav nav-pills" role="tablist" id="es_try_index" style="display:inline">
+            </ul>
+            <hr/>
+            <hr/>
+          </div>
           <form method="POST">
             <input name="csrf_token" type="hidden" value="{{ csrf_token() }}"/>
             <input name="dag_id" type="hidden">
@@ -217,6 +226,11 @@
               <label class="btn active">
                 <input type="checkbox" value="true" name="recursive" checked autocomplete="off">
                  Recursive
+              </label>
+              <label class="btn"
+                title="Only consider failed task instances when clearing this one">
+                <input type="checkbox" value="true" name="only_failed" autocomplete="off">
+                Failed
               </label>
             </span>
             <hr/>
@@ -340,8 +354,13 @@ function updateQueryStringParameter(uri, key, value) {
     var id = '';
     var dag_id = '{{ dag.dag_id }}';
     var task_id = '';
-    var exection_date = '';
+    var execution_date = '';
     var subdag_id = '';
+    var show_es_logs = false;
+    {% if show_external_logs is defined %}
+      show_es_logs = '{{ show_external_logs }}' == "True";
+    {% endif %}
+
     function call_modal(t, d, try_numbers, sd) {
       task_id = t;
       loc = String(window.location);
@@ -361,7 +380,17 @@ function updateQueryStringParameter(uri, key, value) {
           subdag_id = "{{ dag.dag_id }}."+t;
       }
 
+      $("#dag_dl_logs").hide();
+      $("#dag_es_logs").hide();
+      if (try_numbers > 0) {
+          $("#dag_dl_logs").show();
+          if (show_es_logs) {
+              $("#dag_es_logs").show();
+          }
+      }
+
       $("#try_index > li").remove();
+      $("#es_try_index > li").remove();
       var startIndex = (try_numbers > 2 ? 0 : 1);
       for (var index = startIndex; index <  try_numbers; index++) {
         var url = "{{ url_for('airflow.get_logs_with_metadata') }}" +
@@ -380,6 +409,17 @@ function updateQueryStringParameter(uri, key, value) {
 
         $("#try_index").append(`<li role="presentation" style="display:inline">
           <a href="${url}"> ${showLabel} </a>
+          </li>`
+        );
+
+        if (index == 0 || !show_es_logs) continue;
+        var es_url = "{{ url_for('airflow.elasticsearch') }}" +
+          "?dag_id=" + encodeURIComponent(dag_id) +
+          "&task_id=" + encodeURIComponent(task_id) +
+          "&execution_date=" + encodeURIComponent(execution_date) +
+          "&try_number=" + index;
+        $("#es_try_index").append(`<li role="presentation" style="display:inline">
+          <a href="${es_url}"> ${showLabel} </a>
           </li>`
         );
       }

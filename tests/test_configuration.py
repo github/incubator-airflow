@@ -29,6 +29,8 @@ import six
 
 from airflow import configuration
 from airflow.configuration import conf, AirflowConfigParser, parameterized_config
+from tests.compat import mock
+from tests.test_utils.reset_warning_registry import reset_warning_registry
 
 if six.PY2:
     # Need `assertWarns` back-ported from unittest2
@@ -60,7 +62,8 @@ class ConfTest(unittest.TestCase):
     def setUpClass(cls):
         os.environ['AIRFLOW__TESTSECTION__TESTKEY'] = 'testvalue'
         os.environ['AIRFLOW__TESTSECTION__TESTPERCENT'] = 'with%percent'
-        configuration.load_test_config()
+        os.environ['AIRFLOW__TESTCMDENV__ITSACOMMAND_CMD'] = 'echo -n "OK"'
+        os.environ['AIRFLOW__TESTCMDENV__NOTACOMMAND_CMD'] = 'echo -n "NOT OK"'
         conf.set('core', 'percent', 'with%%inside')
 
     @classmethod
@@ -92,6 +95,13 @@ class ConfTest(unittest.TestCase):
                 configuration.get_airflow_config('/home//airflow'),
                 '/path/to/airflow/airflow.cfg')
 
+    def test_case_sensitivity(self):
+        # section and key are case insensitive for get method
+        # note: this is not the case for as_dict method
+        self.assertEqual(conf.get("core", "percent"), "with%inside")
+        self.assertEqual(conf.get("core", "PERCENT"), "with%inside")
+        self.assertEqual(conf.get("CORE", "PERCENT"), "with%inside")
+
     def test_env_var_config(self):
         opt = conf.get('testsection', 'testkey')
         self.assertEqual(opt, 'testvalue')
@@ -101,7 +111,13 @@ class ConfTest(unittest.TestCase):
 
         self.assertTrue(conf.has_option('testsection', 'testkey'))
 
+        os.environ['AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__AIRFLOW__TESTSECTION__TESTKEY'] = 'nested'
+        opt = conf.get('kubernetes_environment_variables', 'AIRFLOW__TESTSECTION__TESTKEY')
+        self.assertEqual(opt, 'nested')
+        del os.environ['AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__AIRFLOW__TESTSECTION__TESTKEY']
+
     def test_conf_as_dict(self):
+        os.environ['AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__AIRFLOW__TESTSECTION__TESTKEY'] = 'nested'
         cfg_dict = conf.as_dict()
 
         # test that configs are picked up
@@ -111,6 +127,10 @@ class ConfTest(unittest.TestCase):
 
         # test env vars
         self.assertEqual(cfg_dict['testsection']['testkey'], '< hidden >')
+        self.assertEqual(
+            cfg_dict['kubernetes_environment_variables']['AIRFLOW__TESTSECTION__TESTKEY'],
+            '< hidden >')
+        del os.environ['AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__AIRFLOW__TESTSECTION__TESTKEY']
 
     def test_conf_as_dict_source(self):
         # test display_source
@@ -139,6 +159,14 @@ class ConfTest(unittest.TestCase):
         # Values with '%' in them should be escaped
         self.assertEqual(cfg_dict['testsection']['testpercent'], 'with%%percent')
         self.assertEqual(cfg_dict['core']['percent'], 'with%%inside')
+
+    def test_conf_as_dict_exclude_env(self):
+        # test display_sensitive
+        cfg_dict = conf.as_dict(include_env=False, display_sensitive=True)
+
+        # Since testsection is only created from env vars, it shouldn't be
+        # present at all if we don't ask for env vars to be included.
+        self.assertNotIn('testsection', cfg_dict)
 
     def test_command_precedence(self):
         TEST_CONFIG = '''[test]
@@ -185,6 +213,83 @@ key6 = value6
         cfg_dict = test_conf.as_dict(display_sensitive=True)
         self.assertEqual('cmd_result', cfg_dict['test']['key2'])
         self.assertNotIn('key2_cmd', cfg_dict['test'])
+
+        # If we exclude _cmds then we should still see the commands to run, not
+        # their values
+        cfg_dict = test_conf.as_dict(include_cmds=False, display_sensitive=True)
+        self.assertNotIn('key4', cfg_dict['test'])
+        self.assertEqual('printf key4_result', cfg_dict['test']['key4_cmd'])
+
+    def test_getboolean(self):
+        """Test AirflowConfigParser.getboolean"""
+        TEST_CONFIG = """
+[type_validation]
+key1 = non_bool_value
+
+[true]
+key2 = t
+key3 = true
+key4 = 1
+
+[false]
+key5 = f
+key6 = false
+key7 = 0
+
+[inline-comment]
+key8 = true #123
+"""
+        test_conf = AirflowConfigParser(default_config=TEST_CONFIG)
+        with self.assertRaises(ValueError):
+            test_conf.getboolean('type_validation', 'key1')
+        self.assertTrue(isinstance(test_conf.getboolean('true', 'key3'), bool))
+        self.assertEqual(True, test_conf.getboolean('true', 'key2'))
+        self.assertEqual(True, test_conf.getboolean('true', 'key3'))
+        self.assertEqual(True, test_conf.getboolean('true', 'key4'))
+        self.assertEqual(False, test_conf.getboolean('false', 'key5'))
+        self.assertEqual(False, test_conf.getboolean('false', 'key6'))
+        self.assertEqual(False, test_conf.getboolean('false', 'key7'))
+        self.assertEqual(True, test_conf.getboolean('inline-comment', 'key8'))
+
+    def test_getint(self):
+        """Test AirflowConfigParser.getint"""
+        TEST_CONFIG = """
+[invalid]
+key1 = str
+
+[valid]
+key2 = 1
+"""
+        test_conf = AirflowConfigParser(default_config=TEST_CONFIG)
+        with self.assertRaises(ValueError):
+            test_conf.getint('invalid', 'key1')
+        self.assertTrue(isinstance(test_conf.getint('valid', 'key2'), int))
+        self.assertEqual(1, test_conf.getint('valid', 'key2'))
+
+    def test_getfloat(self):
+        """Test AirflowConfigParser.getfloat"""
+        TEST_CONFIG = """
+[invalid]
+key1 = str
+
+[valid]
+key2 = 1.23
+"""
+        test_conf = AirflowConfigParser(default_config=TEST_CONFIG)
+        with self.assertRaises(ValueError):
+            test_conf.getfloat('invalid', 'key1')
+        self.assertTrue(isinstance(test_conf.getfloat('valid', 'key2'), float))
+        self.assertEqual(1.23, test_conf.getfloat('valid', 'key2'))
+
+    def test_has_option(self):
+        TEST_CONFIG = '''[test]
+key1 = value1
+'''
+        test_conf = AirflowConfigParser()
+        test_conf.read_string(TEST_CONFIG)
+        self.assertTrue(test_conf.has_option('test', 'key1'))
+        self.assertFalse(test_conf.has_option('test', 'key_not_exists'))
+        self.assertFalse(test_conf.has_option('section_not_exists', 'key1'))
 
     def test_remove_option(self):
         TEST_CONFIG = '''[test]
@@ -234,6 +339,24 @@ key3 = value3
                 ('testkey', 'testvalue'),
                 ('testpercent', 'with%percent')]),
             test_conf.getsection('testsection')
+        )
+
+    def test_kubernetes_environment_variables_section(self):
+        TEST_CONFIG = '''
+[kubernetes_environment_variables]
+key1 = hello
+AIRFLOW_HOME = /root/airflow
+'''
+        TEST_CONFIG_DEFAULT = '''
+[kubernetes_environment_variables]
+'''
+        test_conf = AirflowConfigParser(
+            default_config=parameterized_config(TEST_CONFIG_DEFAULT))
+        test_conf.read_string(TEST_CONFIG)
+
+        self.assertEqual(
+            OrderedDict([('key1', 'hello'), ('AIRFLOW_HOME', '/root/airflow')]),
+            test_conf.getsection('kubernetes_environment_variables')
         )
 
     def test_broker_transport_options(self):
@@ -312,10 +435,36 @@ key3 = value3
 
                 self.assertEqual(test_conf.get('core', 'task_runner'), 'StandardTaskRunner')
 
-        with warnings.catch_warnings(record=True) as w:
-            with env_vars(AIRFLOW__CORE__TASK_RUNNER='NotBashTaskRunner'):
-                test_conf = make_config()
+        with reset_warning_registry():
+            with warnings.catch_warnings(record=True) as w:
+                with env_vars(AIRFLOW__CORE__TASK_RUNNER='NotBashTaskRunner'):
+                    test_conf = make_config()
 
-                self.assertEqual(test_conf.get('core', 'task_runner'), 'NotBashTaskRunner')
+                    self.assertEqual(test_conf.get('core', 'task_runner'), 'NotBashTaskRunner')
 
-                self.assertListEqual([], w)
+                    self.assertListEqual([], w)
+
+    def test_deprecated_funcs(self):
+        for func in ['load_test_config', 'get', 'getboolean', 'getfloat', 'getint', 'has_option',
+                     'remove_option', 'as_dict', 'set']:
+            with mock.patch('airflow.configuration.{}'.format(func)):
+                with self.assertWarns(DeprecationWarning):
+                    getattr(configuration, func)()
+
+    def test_command_from_env(self):
+        TEST_CMDENV_CONFIG = '''[testcmdenv]
+itsacommand = NOT OK
+notacommand = OK
+'''
+        test_cmdenv_conf = AirflowConfigParser()
+        test_cmdenv_conf.read_string(TEST_CMDENV_CONFIG)
+        test_cmdenv_conf.as_command_stdout.add(('testcmdenv', 'itsacommand'))
+        with mock.patch.dict('os.environ'):
+            # AIRFLOW__TESTCMDENV__ITSACOMMAND_CMD maps to ('testcmdenv', 'itsacommand') in
+            # as_command_stdout and therefore should return 'OK' from the environment variable's
+            # echo command, and must not return 'NOT OK' from the configuration
+            self.assertEqual(test_cmdenv_conf.get('testcmdenv', 'itsacommand'), 'OK')
+            # AIRFLOW__TESTCMDENV__NOTACOMMAND_CMD maps to no entry in as_command_stdout and therefore
+            # the option should return 'OK' from the configuration, and must not return 'NOT OK' from
+            # the environement variable's echo command
+            self.assertEqual(test_cmdenv_conf.get('testcmdenv', 'notacommand'), 'OK')

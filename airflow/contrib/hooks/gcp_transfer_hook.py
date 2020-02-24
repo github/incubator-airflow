@@ -87,10 +87,6 @@ YEAR = 'year'
 
 NEGATIVE_STATUSES = {GcpTransferOperationStatus.FAILED, GcpTransferOperationStatus.ABORTED}
 
-# Number of retries - used by googleapiclient method calls to perform retries
-# For requests that are "retriable"
-NUM_RETRIES = 5
-
 
 # noinspection PyAbstractClass
 class GCPTransferServiceHook(GoogleCloudBaseHook):
@@ -132,7 +128,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         :rtype: dict
         """
         body = self._inject_project_id(body, BODY, PROJECT_ID)
-        return self.get_conn().transferJobs().create(body=body).execute(num_retries=NUM_RETRIES)
+        return self.get_conn().transferJobs().create(body=body).execute(num_retries=self.num_retries)
 
     @GoogleCloudBaseHook.fallback_to_default_project_id
     @GoogleCloudBaseHook.catch_http_exception
@@ -154,7 +150,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
             self.get_conn()
             .transferJobs()
             .get(jobName=job_name, projectId=project_id)
-            .execute(num_retries=NUM_RETRIES)
+            .execute(num_retries=self.num_retries)
         )
 
     def list_transfer_job(self, filter):
@@ -174,7 +170,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         jobs = []
 
         while request is not None:
-            response = request.execute(num_retries=NUM_RETRIES)
+            response = request.execute(num_retries=self.num_retries)
             jobs.extend(response[TRANSFER_JOBS])
 
             request = conn.transferJobs().list_next(previous_request=request, previous_response=response)
@@ -196,7 +192,10 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         """
         body = self._inject_project_id(body, BODY, PROJECT_ID)
         return (
-            self.get_conn().transferJobs().patch(jobName=job_name, body=body).execute(num_retries=NUM_RETRIES)
+            self.get_conn()
+            .transferJobs()
+            .patch(jobName=job_name, body=body)
+            .execute(num_retries=self.num_retries)
         )
 
     @GoogleCloudBaseHook.fallback_to_default_project_id
@@ -228,7 +227,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
                     TRANSFER_JOB_FIELD_MASK: STATUS1,
                 },
             )
-            .execute(num_retries=NUM_RETRIES)
+            .execute(num_retries=self.num_retries)
         )
 
     @GoogleCloudBaseHook.catch_http_exception
@@ -240,7 +239,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         :type operation_name: str
         :rtype: None
         """
-        self.get_conn().transferOperations().cancel(name=operation_name).execute(num_retries=NUM_RETRIES)
+        self.get_conn().transferOperations().cancel(name=operation_name).execute(num_retries=self.num_retries)
 
     @GoogleCloudBaseHook.catch_http_exception
     def get_transfer_operation(self, operation_name):
@@ -254,7 +253,12 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
             https://cloud.google.com/storage-transfer/docs/reference/rest/v1/Operation
         :rtype: dict
         """
-        return self.get_conn().transferOperations().get(name=operation_name).execute(num_retries=NUM_RETRIES)
+        return (
+            self.get_conn()
+            .transferOperations()
+            .get(name=operation_name)
+            .execute(num_retries=self.num_retries)
+        )
 
     @GoogleCloudBaseHook.catch_http_exception
     def list_transfer_operations(self, filter):
@@ -282,7 +286,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         request = conn.transferOperations().list(name=TRANSFER_OPERATIONS, filter=json.dumps(filter))
 
         while request is not None:
-            response = request.execute(num_retries=NUM_RETRIES)
+            response = request.execute(num_retries=self.num_retries)
             if OPERATIONS in response:
                 operations.extend(response[OPERATIONS])
 
@@ -301,7 +305,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         :type operation_name: str
         :rtype: None
         """
-        self.get_conn().transferOperations().pause(name=operation_name).execute(num_retries=NUM_RETRIES)
+        self.get_conn().transferOperations().pause(name=operation_name).execute(num_retries=self.num_retries)
 
     @GoogleCloudBaseHook.catch_http_exception
     def resume_transfer_operation(self, operation_name):
@@ -312,7 +316,7 @@ class GCPTransferServiceHook(GoogleCloudBaseHook):
         :type operation_name: str
         :rtype: None
         """
-        self.get_conn().transferOperations().resume(name=operation_name).execute(num_retries=NUM_RETRIES)
+        self.get_conn().transferOperations().resume(name=operation_name).execute(num_retries=self.num_retries)
 
     @GoogleCloudBaseHook.catch_http_exception
     def wait_for_transfer_job(self, job, expected_statuses=(GcpTransferOperationStatus.SUCCESS,), timeout=60):

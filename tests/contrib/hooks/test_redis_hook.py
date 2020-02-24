@@ -19,15 +19,12 @@
 
 
 import unittest
-from airflow import configuration
+import pytest
+
 from airflow.contrib.hooks.redis_hook import RedisHook
 
 
 class TestRedisHook(unittest.TestCase):
-
-    def setUp(self):
-        configuration.load_test_config()
-
     def test_get_conn(self):
         hook = RedisHook(redis_conn_id='redis_default')
         self.assertEqual(hook.redis, None)
@@ -43,12 +40,14 @@ class TestRedisHook(unittest.TestCase):
         hook.get_conn()
         self.assertEqual(hook.password, None)
 
+    @pytest.mark.integration("redis")
     def test_real_ping(self):
         hook = RedisHook(redis_conn_id='redis_default')
         redis = hook.get_conn()
 
         self.assertTrue(redis.ping(), 'Connection to Redis with PING works.')
 
+    @pytest.mark.integration("redis")
     def test_real_get_and_set(self):
         hook = RedisHook(redis_conn_id='redis_default')
         redis = hook.get_conn()

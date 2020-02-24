@@ -24,8 +24,6 @@ import unittest
 
 from botocore.exceptions import NoCredentialsError
 
-from airflow import configuration
-
 try:
     from airflow.hooks.S3_hook import S3Hook
 except ImportError:
@@ -45,7 +43,6 @@ except ImportError:
 class TestS3Hook(unittest.TestCase):
 
     def setUp(self):
-        configuration.load_test_config()
         self.s3_test_url = "s3://test/this/is/not/a-real-key.txt"
 
     def test_parse_s3_url(self):
@@ -89,7 +86,9 @@ class TestS3Hook(unittest.TestCase):
         b = hook.get_bucket('new_bucket')
         self.assertIsNotNone(b)
         region = b.meta.client.get_bucket_location(Bucket=b.name).get('LocationConstraint', None)
-        self.assertEqual(region, 'us-east-1')
+        # https://github.com/spulec/moto/pull/1961
+        # If location is "us-east-1", LocationConstraint should be None
+        self.assertIsNone(region)
 
     @mock_s3
     def test_create_bucket_other_region(self):
@@ -264,8 +263,8 @@ class TestS3Hook(unittest.TestCase):
         conn.create_bucket(Bucket="mybucket")
 
         hook.load_string(u"Contént", "my_key", "mybucket")
-        body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
-
+        resource = boto3.resource('s3').Object('mybucket', 'my_key')  # pylint: disable=no-member
+        body = resource.get()['Body'].read()
         self.assertEqual(body, b'Cont\xC3\xA9nt')
 
     @mock_s3
@@ -277,7 +276,8 @@ class TestS3Hook(unittest.TestCase):
         conn.create_bucket(Bucket="mybucket")
 
         hook.load_bytes(b"Content", "my_key", "mybucket")
-        body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
+        resource = boto3.resource('s3').Object('mybucket', 'my_key')  # pylint: disable=no-member
+        body = resource.get()['Body'].read()
 
         self.assertEqual(body, b'Content')
 
@@ -292,7 +292,8 @@ class TestS3Hook(unittest.TestCase):
             temp_file.write(b"Content")
             temp_file.seek(0)
             hook.load_file_obj(temp_file, "my_key", "mybucket")
-            body = boto3.resource('s3').Object('mybucket', 'my_key').get()['Body'].read()
+            resource = boto3.resource('s3').Object('mybucket', 'my_key')  # pylint: disable=no-member
+            body = resource.get()['Body'].read()
 
             self.assertEqual(body, b'Content')
 

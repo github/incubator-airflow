@@ -22,6 +22,7 @@ from airflow.configuration import conf
 from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.version import version as airflow_version
 
 
 class WorkerConfiguration(LoggingMixin):
@@ -68,6 +69,9 @@ class WorkerConfiguration(LoggingMixin):
         }, {
             'name': 'GIT_SYNC_ONE_TIME',
             'value': 'true'
+        }, {
+            'name': 'GIT_SYNC_REV',
+            'value': self.kube_config.git_sync_rev
         }]
         if self.kube_config.git_user:
             init_environment.append({
@@ -79,6 +83,28 @@ class WorkerConfiguration(LoggingMixin):
                 'name': 'GIT_SYNC_PASSWORD',
                 'value': self.kube_config.git_password
             })
+
+        if self.kube_config.git_sync_credentials_secret:
+            init_environment.extend([
+                {
+                    'name': 'GIT_SYNC_USERNAME',
+                    'valueFrom': {
+                        'secretKeyRef': {
+                            'name': self.kube_config.git_sync_credentials_secret,
+                            'key': 'GIT_SYNC_USERNAME'
+                        }
+                    }
+                },
+                {
+                    'name': 'GIT_SYNC_PASSWORD',
+                    'valueFrom': {
+                        'secretKeyRef': {
+                            'name': self.kube_config.git_sync_credentials_secret,
+                            'key': 'GIT_SYNC_PASSWORD'
+                        }
+                    }
+                }
+            ])
 
         volume_mounts = [{
             'mountPath': self.kube_config.git_sync_root,
@@ -122,13 +148,19 @@ class WorkerConfiguration(LoggingMixin):
                 'value': 'false'
             })
 
-        return [{
+        init_containers = [{
             'name': self.kube_config.git_sync_init_container_name,
             'image': self.kube_config.git_sync_container,
-            'securityContext': {'runAsUser': 65533},  # git-sync user
             'env': init_environment,
             'volumeMounts': volume_mounts
         }]
+
+        if self.kube_config.git_sync_run_as_user != "":
+            init_containers[0]['securityContext'] = {
+                'runAsUser': self.kube_config.git_sync_run_as_user  # git-sync user
+            }
+
+        return init_containers
 
     def _get_environment(self):
         """Defines any necessary environment variables for the pod executor"""
@@ -189,10 +221,10 @@ class WorkerConfiguration(LoggingMixin):
         """Defines the security context"""
         security_context = {}
 
-        if self.kube_config.worker_run_as_user:
+        if self.kube_config.worker_run_as_user != "":
             security_context['runAsUser'] = self.kube_config.worker_run_as_user
 
-        if self.kube_config.worker_fs_group:
+        if self.kube_config.worker_fs_group != "":
             security_context['fsGroup'] = self.kube_config.worker_fs_group
 
         # set fs_group to 65533 if not explicitly specified and using git ssh keypair auth
@@ -200,6 +232,12 @@ class WorkerConfiguration(LoggingMixin):
             security_context['fsGroup'] = 65533
 
         return security_context
+
+    def _get_labels(self, kube_executor_labels, labels):
+        copy = self.kube_config.kube_labels.copy()
+        copy.update(kube_executor_labels)
+        copy.update(labels)
+        return copy
 
     def _get_volumes_and_mounts(self):
         def _construct_volume(name, claim, host):
@@ -277,6 +315,33 @@ class WorkerConfiguration(LoggingMixin):
                 'mode': 0o440
             }
 
+        if self.kube_config.airflow_local_settings_configmap:
+            config_path = '{}/config/airflow_local_settings.py'.format(self.worker_airflow_home)
+
+            if self.kube_config.airflow_local_settings_configmap != self.kube_config.airflow_configmap:
+                config_volume_name = 'airflow-local-settings'
+                volumes[config_volume_name] = {
+                    'name': config_volume_name,
+                    'configMap': {
+                        'name': self.kube_config.airflow_local_settings_configmap
+                    }
+                }
+
+                volume_mounts[config_volume_name] = {
+                    'name': config_volume_name,
+                    'mountPath': config_path,
+                    'subPath': 'airflow_local_settings.py',
+                    'readOnly': True
+                }
+
+            else:
+                volume_mounts['airflow-local-settings'] = {
+                    'name': 'airflow-config',
+                    'mountPath': config_path,
+                    'subPath': 'airflow_local_settings.py',
+                    'readOnly': True
+                }
+
         # Mount the airflow.cfg file via a configmap the user has specified
         if self.kube_config.airflow_configmap:
             config_volume_name = 'airflow-config'
@@ -312,7 +377,8 @@ class WorkerConfiguration(LoggingMixin):
             request_memory=kube_executor_config.request_memory,
             request_cpu=kube_executor_config.request_cpu,
             limit_memory=kube_executor_config.limit_memory,
-            limit_cpu=kube_executor_config.limit_cpu
+            limit_cpu=kube_executor_config.limit_cpu,
+            limit_gpu=kube_executor_config.limit_gpu
         )
         gcp_sa_key = kube_executor_config.gcp_service_account_key
         annotations = dict(kube_executor_config.annotations) or self.kube_config.kube_annotations
@@ -332,13 +398,15 @@ class WorkerConfiguration(LoggingMixin):
             image_pull_policy=(kube_executor_config.image_pull_policy or
                                self.kube_config.kube_image_pull_policy),
             cmds=airflow_command,
-            labels={
+            labels=self._get_labels(kube_executor_config.labels, {
                 'airflow-worker': worker_uuid,
                 'dag_id': dag_id,
                 'task_id': task_id,
                 'execution_date': execution_date,
                 'try_number': str(try_number),
-            },
+                'airflow_version': airflow_version.replace('+', '-'),
+                'kubernetes_executor': 'True',
+            }),
             envs=self._get_environment(),
             secrets=self._get_secrets(),
             service_account_name=self.kube_config.worker_service_account_name,

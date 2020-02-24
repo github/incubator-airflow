@@ -19,6 +19,7 @@
 # under the License.
 
 from __future__ import print_function
+import errno
 import importlib
 import logging
 
@@ -33,7 +34,9 @@ import getpass
 import reprlib
 import argparse
 from builtins import input
+from tempfile import NamedTemporaryFile
 
+from airflow.utils.dot_renderer import render_dag
 from airflow.utils.timezone import parse as parsedate
 import json
 from tabulate import tabulate
@@ -53,13 +56,13 @@ from typing import Any
 import airflow
 from airflow import api
 from airflow import jobs, settings
-from airflow import configuration as conf
+from airflow.configuration import conf
 from airflow.exceptions import AirflowException, AirflowWebServerTimeout
-from airflow.executors import GetDefaultExecutor
-from airflow.models import DagModel, DagBag, TaskInstance, DagRun, Variable, DAG
-from airflow.models.connection import Connection
-from airflow.models.dagpickle import DagPickle
-from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
+from airflow.executors import get_default_executor
+from airflow.models import (
+    Connection, DagModel, DagBag, DagPickle, TaskInstance, DagRun, Variable, DAG
+)
+from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_QUEUED_DEPS)
 from airflow.utils import cli as cli_utils, db
 from airflow.utils.net import get_hostname
 from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
@@ -70,11 +73,12 @@ from airflow.www_rbac.app import create_app as create_app_rbac
 from airflow.www_rbac.app import cached_appbuilder
 
 from sqlalchemy.orm import exc
+import six
 
 api.load_auth()
 api_module = import_module(conf.get('cli', 'api_client'))  # type: Any
 api_client = api_module.Client(api_base_url=conf.get('cli', 'endpoint_url'),
-                               auth=api.api_auth.client_auth)
+                               auth=api.API_AUTH.api_auth.CLIENT_AUTH)
 
 log = LoggingMixin().log
 
@@ -196,7 +200,7 @@ def backfill(args, dag=None):
                 [dag],
                 start_date=args.start_date,
                 end_date=args.end_date,
-                confirm_prompt=True,
+                confirm_prompt=not args.yes,
                 include_subdags=False,
             )
 
@@ -222,46 +226,42 @@ def backfill(args, dag=None):
 def trigger_dag(args):
     """
     Creates a dag run for the specified dag
+
     :param args:
     :return:
     """
-    log = LoggingMixin().log
     try:
         message = api_client.trigger_dag(dag_id=args.dag_id,
                                          run_id=args.run_id,
                                          conf=args.conf,
                                          execution_date=args.exec_date)
+        print(message)
     except IOError as err:
-        log.error(err)
         raise AirflowException(err)
-    log.info(message)
 
 
 @cli_utils.action_logging
 def delete_dag(args):
     """
     Deletes all DB records related to the specified dag
+
     :param args:
     :return:
     """
-    log = LoggingMixin().log
     if args.yes or input(
             "This will drop all existing records related to the specified DAG. "
             "Proceed? (y/n)").upper() == "Y":
         try:
             message = api_client.delete_dag(dag_id=args.dag_id)
+            print(message)
         except IOError as err:
-            log.error(err)
             raise AirflowException(err)
-        log.info(message)
     else:
         print("Bail.")
 
 
 @cli_utils.action_logging
 def pool(args):
-    log = LoggingMixin().log
-
     def _tabulate(pools):
         return "\n%s" % tabulate(pools, ['Pool', 'Slots', 'Description'],
                                  tablefmt="fancy_grid")
@@ -287,9 +287,9 @@ def pool(args):
         else:
             pools = api_client.get_pools()
     except (AirflowException, IOError) as err:
-        log.error(err)
+        print(err)
     else:
-        log.info(_tabulate(pools=pools))
+        print(_tabulate(pools=pools))
 
 
 def pool_import_helper(filepath):
@@ -340,8 +340,7 @@ def variables(args):
         except ValueError as e:
             print(e)
     if args.delete:
-        with db.create_session() as session:
-            session.query(Variable).filter_by(key=args.delete).delete()
+        Variable.delete(args.delete)
     if args.set:
         Variable.set(args.set[0], args.set[1])
     # Work around 'import' as a reserved keyword
@@ -370,18 +369,18 @@ def import_helper(filepath):
     except Exception:
         print("Invalid variables file.")
     else:
-        try:
-            n = 0
-            for k, v in d.items():
-                if isinstance(v, dict):
-                    Variable.set(k, v, serialize_json=True)
-                else:
-                    Variable.set(k, v)
-                n += 1
-        except Exception:
-            pass
-        finally:
-            print("{} of {} variables successfully updated.".format(n, len(d)))
+        suc_count = fail_count = 0
+        for k, v in d.items():
+            try:
+                Variable.set(k, v, serialize_json=not isinstance(v, six.string_types))
+            except Exception as e:
+                print('Variable import failed: {}'.format(repr(e)))
+                fail_count += 1
+            else:
+                suc_count += 1
+        print("{} of {} variables successfully updated.".format(suc_count, len(d)))
+        if fail_count:
+            print("{} variable(s) failed to be updated.".format(fail_count))
 
 
 def export_helper(filepath):
@@ -403,24 +402,48 @@ def export_helper(filepath):
 
 
 @cli_utils.action_logging
-def pause(args, dag=None):
-    set_is_paused(True, args, dag)
+def pause(args):
+    set_is_paused(True, args)
 
 
 @cli_utils.action_logging
-def unpause(args, dag=None):
-    set_is_paused(False, args, dag)
+def unpause(args):
+    set_is_paused(False, args)
 
 
-def set_is_paused(is_paused, args, dag=None):
-    dag = dag or get_dag(args)
+def set_is_paused(is_paused, args):
+    DagModel.get_dagmodel(args.dag_id).set_is_paused(
+        is_paused=is_paused,
+    )
 
-    with db.create_session() as session:
-        dm = session.query(DagModel).filter(DagModel.dag_id == dag.dag_id).first()
-        dm.is_paused = is_paused
-        session.commit()
+    print("Dag: {}, paused: {}".format(args.dag_id, str(is_paused)))
 
-    print("Dag: {}, paused: {}".format(dag, str(dag.is_paused)))
+
+def show_dag(args):
+    dag = get_dag(args)
+    dot = render_dag(dag)
+    if args.save:
+        filename, _, fileformat = args.save.rpartition('.')
+        dot.render(filename=filename, format=fileformat, cleanup=True)
+        print("File {} saved".format(args.save))
+    elif args.imgcat:
+        data = dot.pipe(format='png')
+        try:
+            proc = subprocess.Popen("imgcat", stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise AirflowException(
+                    "Failed to execute. Make sure the imgcat executables are on your systems \'PATH\'"
+                )
+            else:
+                raise
+        out, err = proc.communicate(data)
+        if out:
+            print(out.decode('utf-8'))
+        if err:
+            print(err.decode('utf-8'))
+    else:
+        print(dot.source)
 
 
 def _run(args, dag, ti):
@@ -451,13 +474,14 @@ def _run(args, dag, ti):
                     session.add(pickle)
                     pickle_id = pickle.id
                     # TODO: This should be written to a log
-                    print('Pickled dag {dag} as pickle_id:{pickle_id}'.format(**locals()))
+                    print('Pickled dag {dag} as pickle_id: {pickle_id}'.format(
+                        dag=dag, pickle_id=pickle_id))
             except Exception as e:
                 print('Could not pickle the DAG')
                 print(e)
                 raise e
 
-        executor = GetDefaultExecutor()
+        executor = get_default_executor()
         executor.start()
         print("Sending to executor.")
         executor.queue_task_instance(
@@ -478,8 +502,6 @@ def run(args, dag=None):
     if dag:
         args.dag_id = dag.dag_id
 
-    log = LoggingMixin().log
-
     # Load custom airflow config
     if args.cfg_path:
         with open(args.cfg_path, 'r') as conf_file:
@@ -488,7 +510,7 @@ def run(args, dag=None):
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
 
-        conf.conf.read_dict(conf_dict, source=args.cfg_path)
+        conf.read_dict(conf_dict, source=args.cfg_path)
         settings.configure_vars()
 
     # IMPORTANT, have to use the NullPool, otherwise, each "run" command may leave
@@ -501,7 +523,7 @@ def run(args, dag=None):
         dag = get_dag(args)
     elif not dag:
         with db.create_session() as session:
-            log.info('Loading pickle id %s', args.pickle)
+            print('Loading pickle id %s', args.pickle)
             dag_pickle = session.query(DagPickle).filter(DagPickle.id == args.pickle).first()
             if not dag_pickle:
                 raise AirflowException("Who hid the pickle!? [missing pickle]")
@@ -514,7 +536,7 @@ def run(args, dag=None):
     ti.init_run_context(raw=args.raw)
 
     hostname = get_hostname()
-    log.info("Running %s on host %s", ti, hostname)
+    print("Running %s on host %s", ti, hostname)
 
     if args.interactive:
         _run(args, dag, ti)
@@ -540,7 +562,7 @@ def task_failed_deps(args):
     task = dag.get_task(task_id=args.task_id)
     ti = TaskInstance(task, args.execution_date)
 
-    dep_context = DepContext(deps=SCHEDULER_DEPS)
+    dep_context = DepContext(deps=SCHEDULER_QUEUED_DEPS)
     failed_deps = list(ti.get_failed_dep_statuses(dep_context=dep_context))
     # TODO, Do we want to print or log this
     if failed_deps:
@@ -642,7 +664,6 @@ def test(args, dag=None):
     # We want log outout from operators etc to show up here. Normally
     # airflow.task would redirect to a file, but here we want it to propagate
     # up to the normal airflow handler.
-    logging.getLogger('airflow.task').propagate = True
 
     dag = dag or get_dag(args)
 
@@ -654,6 +675,7 @@ def test(args, dag=None):
     ti = TaskInstance(task, args.execution_date)
 
     try:
+        logging.getLogger('airflow.task').propagate = True
         if args.dry_run:
             ti.dry_run()
         else:
@@ -667,6 +689,10 @@ def test(args, dag=None):
             debugger.post_mortem()
         else:
             raise
+    finally:
+        # Make sure to reset back to normal. When run for CLI this doesn't
+        # matter, but it does for test suite
+        logging.getLogger('airflow.task').propagate = False
 
 
 @cli_utils.action_logging
@@ -841,6 +867,7 @@ def restart_workers(gunicorn_master_proc, num_workers_expected, master_timeout):
 
 @cli_utils.action_logging
 def webserver(args):
+    py2_deprecation_waring()
     print(settings.HEADER)
 
     access_logfile = args.access_logfile or conf.get('webserver', 'access_logfile')
@@ -862,10 +889,10 @@ def webserver(args):
             "Starting the web server on port {0} and host {1}.".format(
                 args.port, args.hostname))
         if settings.RBAC:
-            app, _ = create_app_rbac(None, testing=conf.get('core', 'unit_test_mode'))
+            app, _ = create_app_rbac(None, testing=conf.getboolean('core', 'unit_test_mode'))
         else:
-            app = create_app(None, testing=conf.get('core', 'unit_test_mode'))
-        app.run(debug=True, use_reloader=False if app.config['TESTING'] else True,
+            app = create_app(None, testing=conf.getboolean('core', 'unit_test_mode'))
+        app.run(debug=True, use_reloader=not app.config['TESTING'],
                 port=args.port, host=args.hostname,
                 ssl_context=(ssl_cert, ssl_key) if ssl_cert and ssl_key else None)
     else:
@@ -882,12 +909,15 @@ def webserver(args):
         print(
             textwrap.dedent('''\
                 Running the Gunicorn Server with:
-                Workers: {num_workers} {args.workerclass}
-                Host: {args.hostname}:{args.port}
+                Workers: {num_workers} {workerclass}
+                Host: {hostname}:{port}
                 Timeout: {worker_timeout}
                 Logfiles: {access_logfile} {error_logfile}
                 =================================================================\
-            '''.format(**locals())))
+            '''.format(num_workers=num_workers, workerclass=args.workerclass,
+                       hostname=args.hostname, port=args.port,
+                       worker_timeout=worker_timeout, access_logfile=access_logfile,
+                       error_logfile=error_logfile)))
 
         run_args = [
             'gunicorn',
@@ -973,6 +1003,7 @@ def webserver(args):
 
 @cli_utils.action_logging
 def scheduler(args):
+    py2_deprecation_waring()
     print(settings.HEADER)
     job = jobs.SchedulerJob(
         dag_id=args.dag_id,
@@ -1024,10 +1055,16 @@ def serve_logs(args):
             mimetype="application/json",
             as_attachment=False)
 
-    WORKER_LOG_SERVER_PORT = \
-        int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
-    flask_app.run(
-        host='0.0.0.0', port=WORKER_LOG_SERVER_PORT)
+    worker_log_server_port = int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
+    flask_app.run(host='0.0.0.0', port=worker_log_server_port)
+
+
+def _serve_logs(env, skip_serve_logs=False):
+    """Starts serve_logs sub-process"""
+    if skip_serve_logs is False:
+        sub_proc = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
+        return sub_proc
+    return None
 
 
 @cli_utils.action_logging
@@ -1036,7 +1073,6 @@ def worker(args):
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
     if not settings.validate_session():
-        log = LoggingMixin().log
         log.error("Worker exiting... database connection precheck failed! ")
         sys.exit(1)
 
@@ -1045,8 +1081,11 @@ def worker(args):
     from celery.bin import worker
 
     autoscale = args.autoscale
+    skip_serve_logs = args.skip_serve_logs
+
     if autoscale is None and conf.has_option("celery", "worker_autoscale"):
         autoscale = conf.get("celery", "worker_autoscale")
+
     worker = worker.worker(app=celery_app)
     options = {
         'optimization': 'fair',
@@ -1057,6 +1096,9 @@ def worker(args):
         'hostname': args.celery_hostname,
         'loglevel': conf.get('core', 'LOGGING_LEVEL'),
     }
+
+    if conf.has_option("celery", "pool"):
+        options["pool"] = conf.get("celery", "pool")
 
     if args.daemon:
         pid, stdout, stderr, log_file = setup_locations("worker",
@@ -1075,9 +1117,8 @@ def worker(args):
             stderr=stderr,
         )
         with ctx:
-            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
+            sp = _serve_logs(env, skip_serve_logs)
             worker.run(**options)
-            sp.kill()
 
         stdout.close()
         stderr.close()
@@ -1085,19 +1126,23 @@ def worker(args):
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
 
-        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
+        sp = _serve_logs(env, skip_serve_logs)
 
         worker.run(**options)
+
+    if sp:
         sp.kill()
 
 
 def initdb(args):  # noqa
+    py2_deprecation_waring()
     print("DB: " + repr(settings.engine.url))
     db.initdb(settings.RBAC)
     print("Done.")
 
 
 def resetdb(args):
+    py2_deprecation_waring()
     print("DB: " + repr(settings.engine.url))
     if args.yes or input("This will drop existing tables "
                          "if they exist. Proceed? "
@@ -1108,13 +1153,55 @@ def resetdb(args):
 
 
 @cli_utils.action_logging
+def shell(args):
+    """Run a shell that allows to access database access"""
+    url = settings.engine.url
+    print("DB: " + repr(url))
+
+    if url.get_backend_name() == 'mysql':
+        with NamedTemporaryFile(suffix="my.cnf") as f:
+            content = textwrap.dedent("""
+                [client]
+                host     = {}
+                user     = {}
+                password = {}
+                port     = {}
+                database = {}
+                """.format(url.host, url.username, url.password or "", url.port or "", url.database)).strip()
+            f.write(content.encode())
+            f.flush()
+            subprocess.Popen(["mysql", "--defaults-extra-file={}".format(f.name)]).wait()
+    elif url.get_backend_name() == 'sqlite':
+        subprocess.Popen(["sqlite3", url.database]).wait()
+    elif url.get_backend_name() == 'postgresql':
+        env = os.environ.copy()
+        env['PGHOST'] = url.host or ""
+        env['PGPORT'] = url.port or ""
+        env['PGUSER'] = url.username or ""
+        # PostgreSQL does not allow the use of PGPASSFILE if the current user is root.
+        env["PGPASSWORD"] = url.password or ""
+        env['PGDATABASE'] = url.database
+        subprocess.Popen(["psql"], env=env).wait()
+    else:
+        raise AirflowException("Unknown driver: {}".format(url.drivername))
+
+
+@cli_utils.action_logging
 def upgradedb(args):  # noqa
+    py2_deprecation_waring()
     print("DB: " + repr(settings.engine.url))
     db.upgradedb()
 
 
 @cli_utils.action_logging
+def checkdb(args):  # noqa
+    py2_deprecation_waring()
+    print("DB: " + repr(settings.engine.url))
+    db.checkdb()
+
+
 def version(args):  # noqa
+    py2_deprecation_waring()
     print(settings.HEADER + "  v" + airflow.__version__)
 
 
@@ -1242,7 +1329,7 @@ def connections(args):
                                  urlunparse((args.conn_type,
                                             '{login}:{password}@{host}:{port}'
                                              .format(login=args.conn_login or '',
-                                                     password=args.conn_password or '',
+                                                     password='******' or '',
                                                      host=args.conn_host or '',
                                                      port=args.conn_port or ''),
                                              args.conn_schema or '', '', '', '')))
@@ -1461,8 +1548,14 @@ def list_dag_runs(args, dag=None):
 def sync_perm(args): # noqa
     if settings.RBAC:
         appbuilder = cached_appbuilder()
-        print('Update permission, view-menu for all existing roles')
+        print('Updating permission, view-menu for all existing roles')
         appbuilder.sm.sync_roles()
+        print('Updating permission on all DAG views')
+        dags = DagBag().dags.values()
+        for dag in dags:
+            appbuilder.sm.sync_perm_for_dag(
+                dag.dag_id,
+                dag.access_control)
     else:
         print('The sync_perm command only works for rbac UI.')
 
@@ -1625,6 +1718,26 @@ class CLIFactory(object):
         'dag_regex': Arg(
             ("-dx", "--dag_regex"),
             "Search dag_id as regex instead of exact string", "store_true"),
+        # show_dag
+        'save': Arg(
+            ("-s", "--save"),
+            "Saves the result to the indicated file.\n"
+            "\n"
+            "The file format is determined by the file extension. For more information about supported "
+            "format, see: https://www.graphviz.org/doc/info/output.html\n"
+            "\n"
+            "If you want to create a PNG file then you should execute the following command:\n"
+            "airflow dags show <DAG_ID> --save output.png\n"
+            "\n"
+            "If you want to create a DOT file then you should execute the following command:\n"
+            "airflow dags show <DAG_ID> --save output.dot\n"
+        ),
+        'imgcat': Arg(
+            ("--imgcat", ),
+            "Displays graph using the imgcat tool. \n"
+            "\n"
+            "For more information, see: https://www.iterm2.com/documentation-images.html",
+            action='store_true'),
         # trigger_dag
         'run_id': Arg(("-r", "--run_id"), "Helps to identify this run"),
         'conf': Arg(
@@ -1794,7 +1907,7 @@ class CLIFactory(object):
             help="Set number of seconds to execute before exiting"),
         'num_runs': Arg(
             ("-n", "--num_runs"),
-            default=-1, type=int,
+            default=conf.getint('scheduler', 'num_runs', fallback=-1), type=int,
             help="Set the number of runs to execute before exiting"),
         # worker
         'do_pickle': Arg(
@@ -1929,6 +2042,11 @@ class CLIFactory(object):
         'autoscale': Arg(
             ('-a', '--autoscale'),
             help="Minimum and Maximum number of worker to autoscale"),
+        'skip_serve_logs': Arg(
+            ("-s", "--skip_serve_logs"),
+            default=False,
+            help="Don't start the serve logs process along with the workers.",
+            action="store_true"),
     }
     subparsers = (
         {
@@ -1943,7 +2061,7 @@ class CLIFactory(object):
                     " within the backfill date range.",
             'args': (
                 'dag_id', 'task_regex', 'start_date', 'end_date',
-                'mark_success', 'local', 'donot_pickle',
+                'mark_success', 'local', 'donot_pickle', 'yes',
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
                 'subdir', 'pool', 'delay_on_limit', 'dry_run', 'verbose', 'conf',
                 'reset_dag_run', 'rerun_failed_tasks', 'run_backwards'
@@ -1984,6 +2102,10 @@ class CLIFactory(object):
             'func': delete_dag,
             'help': "Delete all DB records related to the specified DAG",
             'args': ('dag_id', 'yes',),
+        }, {
+            'func': show_dag,
+            'help': "Displays DAG's tasks with their dependencies",
+            'args': ('dag_id', 'subdir', 'save', 'imgcat',),
         }, {
             'func': pool,
             'help': "CRUD operations on pools",
@@ -2061,6 +2183,14 @@ class CLIFactory(object):
             'help': "Upgrade the metadata database to latest version",
             'args': tuple(),
         }, {
+            'func': checkdb,
+            'help': "Check if the database can be reached.",
+            'args': tuple(),
+        }, {
+            'func': shell,
+            'help': "Runs a shell to access the database",
+            'args': tuple(),
+        }, {
             'func': scheduler,
             'help': "Start a scheduler instance",
             'args': ('dag_id_opt', 'subdir', 'run_duration', 'num_runs',
@@ -2070,7 +2200,7 @@ class CLIFactory(object):
             'func': worker,
             'help': "Start a Celery worker node",
             'args': ('do_pickle', 'queues', 'concurrency', 'celery_hostname',
-                     'pid', 'daemon', 'stdout', 'stderr', 'log_file', 'autoscale'),
+                     'pid', 'daemon', 'stdout', 'stderr', 'log_file', 'autoscale', 'skip_serve_logs'),
         }, {
             'func': flower,
             'help': "Start a Celery Flower",
@@ -2101,7 +2231,7 @@ class CLIFactory(object):
         },
         {
             'func': sync_perm,
-            'help': "Update existing role's permissions.",
+            'help': "Update permissions for existing roles and DAGs.",
             'args': tuple(),
         },
         {
@@ -2123,7 +2253,13 @@ class CLIFactory(object):
 
     @classmethod
     def get_parser(cls, dag_parser=False):
-        parser = argparse.ArgumentParser()
+        """Creates and returns command line argument parser"""
+        class DefaultHelpParser(argparse.ArgumentParser):
+            """Override argparse.ArgumentParser.error and use print_help instead of print_usage"""
+            def error(self, message):
+                self.print_help()
+                self.exit(2, '\n{} command error: {}, see help above.\n'.format(self.prog, message))
+        parser = DefaultHelpParser()
         subparsers = parser.add_subparsers(
             help='sub-command help', dest='subcommand')
         subparsers.required = True
@@ -2146,3 +2282,48 @@ class CLIFactory(object):
 
 def get_parser():
     return CLIFactory.get_parser()
+
+
+def py2_deprecation_waring():
+
+    if sys.version_info[0] != 2:
+        return
+
+    stream = sys.stderr
+    try:
+        from pip._vendor import colorama
+        WINDOWS = (sys.platform.startswith("win") or
+                   (sys.platform == 'cli' and os.name == 'nt'))
+        if WINDOWS:
+            stream = colorama.AnsiToWin32(sys.stderr)
+    except Exception:
+        colorama = None
+
+    def should_color():
+        # Don't colorize things if we do not have colorama or if told not to
+        if not colorama:
+            return False
+
+        real_stream = (
+            stream if not isinstance(stream, colorama.AnsiToWin32)
+            else stream.wrapped
+        )
+
+        # If the stream is a tty we should color it
+        if hasattr(real_stream, "isatty") and real_stream.isatty():
+            return True
+
+        if os.environ.get("TERM") and "color" in os.environ.get("TERM"):
+            return True
+
+        # If anything else we should not color it
+        return False
+
+    msg = (
+        "DEPRECATION: Python 2.7 will reach the end of its life on January 1st, 2020. Airflow 1.10 "
+        "will be the last release series to support Python 2\n"
+    )
+    if should_color():
+        msg = "".join([colorama.Fore.YELLOW, msg, colorama.Style.RESET_ALL])
+    stream.write(msg)
+    stream.flush()

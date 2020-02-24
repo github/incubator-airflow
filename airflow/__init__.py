@@ -35,7 +35,10 @@ __version__ = version.version
 import sys
 
 # flake8: noqa: F401
-from airflow import settings, configuration as conf
+# noinspection PyUnresolvedReferences
+from airflow import utils
+from airflow import settings
+from airflow.configuration import conf
 from airflow.models import DAG
 from flask_admin import BaseView
 from importlib import import_module
@@ -63,6 +66,9 @@ def load_login():
     try:
         global login
         login = import_module(auth_backend)
+
+        if hasattr(login, 'login_manager') and not hasattr(login, 'LOGIN_MANAGER'):
+            login.LOGIN_MANAGER = login.login_manager
     except ImportError as err:
         log.critical(
             "Cannot import authentication module %s. "

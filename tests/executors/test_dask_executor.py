@@ -18,8 +18,11 @@
 # under the License.
 
 import unittest
+from tests.compat import mock
 
-from airflow import configuration
+import pytest
+
+from airflow.configuration import conf
 from airflow.models import DagBag
 from airflow.jobs import BackfillJob
 from airflow.utils import timezone
@@ -36,17 +39,12 @@ try:
         cluster as dask_testing_cluster,
         tls_security,
     )
-    SKIP_DASK = False
 except ImportError:
-    SKIP_DASK = True
-
-if 'sqlite' in configuration.conf.get('core', 'sql_alchemy_conn'):
-    SKIP_DASK = True
-
-# Always skip due to issues on python 3 issues
-SKIP_DASK = True
+    pass
 
 DEFAULT_DATE = timezone.datetime(2017, 1, 1)
+pytestmark = pytest.mark.xfail(condition=True, reason="The Dask executor is expected to fail: "
+                               "TODO: WE SHOULD REMOVE IT ALTOGETHER OR FIX ????")
 
 
 class BaseDaskTest(unittest.TestCase):
@@ -89,12 +87,10 @@ class DaskExecutorTest(BaseDaskTest):
         self.dagbag = DagBag(include_examples=True)
         self.cluster = LocalCluster()
 
-    @unittest.skipIf(SKIP_DASK, 'Dask unsupported by this configuration')
     def test_dask_executor_functions(self):
         executor = DaskExecutor(cluster_address=self.cluster.scheduler_address)
         self.assert_tasks_on_executor(executor)
 
-    @unittest.skipIf(SKIP_DASK, 'Dask unsupported by this configuration')
     def test_backfill_integration(self):
         """
         Test that DaskExecutor can be used to backfill example dags
@@ -131,7 +127,6 @@ class DaskExecutorTLSTest(BaseDaskTest):
     def setUp(self):
         self.dagbag = DagBag(include_examples=True)
 
-    @unittest.skipIf(SKIP_DASK, 'Dask unsupported by this configuration')
     def test_tls(self):
         with dask_testing_cluster(
                 worker_kwargs={'security': tls_security()},
@@ -139,9 +134,9 @@ class DaskExecutorTLSTest(BaseDaskTest):
 
             # These use test certs that ship with dask/distributed and should not be
             #  used in production
-            configuration.set('dask', 'tls_ca', get_cert('tls-ca-cert.pem'))
-            configuration.set('dask', 'tls_cert', get_cert('tls-key-cert.pem'))
-            configuration.set('dask', 'tls_key', get_cert('tls-key.pem'))
+            conf.set('dask', 'tls_ca', get_cert('tls-ca-cert.pem'))
+            conf.set('dask', 'tls_cert', get_cert('tls-key-cert.pem'))
+            conf.set('dask', 'tls_key', get_cert('tls-key.pem'))
             try:
                 executor = DaskExecutor(cluster_address=s['address'])
 
@@ -152,6 +147,17 @@ class DaskExecutorTLSTest(BaseDaskTest):
                 # and tasks to have completed.
                 executor.client.close()
             finally:
-                configuration.set('dask', 'tls_ca', '')
-                configuration.set('dask', 'tls_key', '')
-                configuration.set('dask', 'tls_cert', '')
+                conf.set('dask', 'tls_ca', '')
+                conf.set('dask', 'tls_key', '')
+                conf.set('dask', 'tls_cert', '')
+
+    @mock.patch('airflow.executors.dask_executor.DaskExecutor.sync')
+    @mock.patch('airflow.executors.base_executor.BaseExecutor.trigger_tasks')
+    @mock.patch('airflow.settings.Stats.gauge')
+    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_tasks, mock_sync):
+        executor = DaskExecutor()
+        executor.heartbeat()
+        calls = [mock.call('executor.open_slots', mock.ANY),
+                 mock.call('executor.queued_tasks', mock.ANY),
+                 mock.call('executor.running_tasks', mock.ANY)]
+        mock_stats_gauge.assert_has_calls(calls)

@@ -19,16 +19,15 @@
 
 import unittest
 
-from airflow import configuration
-from airflow import models
+import boto3
+from moto import mock_s3
+
+from airflow.configuration import conf
 from airflow.contrib.operators.s3_to_sftp_operator import S3ToSFTPOperator
 from airflow.contrib.operators.ssh_operator import SSHOperator
 from airflow.models import DAG, TaskInstance
-from airflow.settings import Session
 from airflow.utils import timezone
 from airflow.utils.timezone import datetime
-import boto3
-from moto import mock_s3
 
 
 TASK_ID = 'test_s3_to_sftp'
@@ -42,25 +41,13 @@ LOCAL_FILE_PATH = '/tmp/test_s3_upload'
 SFTP_MOCK_FILE = 'test_sftp_file.csv'
 S3_MOCK_FILES = 'test_1_file.csv'
 
-TEST_DAG_ID = 'unit_tests'
+TEST_DAG_ID = 'unit_tests_s3_to_sftp'
 DEFAULT_DATE = datetime(2018, 1, 1)
-
-
-def reset(dag_id=TEST_DAG_ID):
-    session = Session()
-    tis = session.query(models.TaskInstance).filter_by(dag_id=dag_id)
-    tis.delete()
-    session.commit()
-    session.close()
-
-
-reset()
 
 
 class S3ToSFTPOperatorTest(unittest.TestCase):
     @mock_s3
     def setUp(self):
-        configuration.load_test_config()
         from airflow.contrib.hooks.ssh_hook import SSHHook
         from airflow.hooks.S3_hook import S3Hook
 
@@ -89,7 +76,7 @@ class S3ToSFTPOperatorTest(unittest.TestCase):
     @mock_s3
     def test_s3_to_sftp_operation(self):
         # Setting
-        configuration.conf.set("core", "enable_xcom_pickling", "True")
+        conf.set("core", "enable_xcom_pickling", "True")
         test_remote_file_content = \
             "This is remote file content \n which is also multiline " \
             "another line here \n this is last line. EOF"

@@ -71,8 +71,11 @@ class DbApiHook(BaseHook):
         host = conn.host
         if conn.port is not None:
             host += ':{port}'.format(port=conn.port)
-        return '{conn.conn_type}://{login}{host}/{conn.schema}'.format(
+        uri = '{conn.conn_type}://{login}{host}/'.format(
             conn=conn, login=login, host=host)
+        if conn.schema:
+            uri += conn.schema
+        return uri
 
     def get_sqlalchemy_engine(self, engine_kwargs=None):
         if engine_kwargs is None:
@@ -181,10 +184,10 @@ class DbApiHook(BaseHook):
         Sets the autocommit flag on the connection
         """
         if not self.supports_autocommit and autocommit:
-            self.log.warn(
-                ("%s connection doesn't support "
-                 "autocommit but autocommit activated."),
-                getattr(self, self.conn_name_attr))
+            self.log.warning(
+                "%s connection doesn't support autocommit but autocommit activated.",
+                getattr(self, self.conn_name_attr)
+            )
         conn.autocommit = autocommit
 
     def get_autocommit(self, conn):

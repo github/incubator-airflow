@@ -23,9 +23,7 @@ from datetime import timedelta
 
 from airflow.exceptions import AirflowException, AirflowSensorTimeout, \
     AirflowSkipException, AirflowRescheduleException
-from airflow.models import BaseOperator
-from airflow.models.skipmixin import SkipMixin
-from airflow.models.taskreschedule import TaskReschedule
+from airflow.models import BaseOperator, SkipMixin, TaskReschedule
 from airflow.utils import timezone
 from airflow.utils.decorators import apply_defaults
 from airflow.ti_deps.deps.ready_to_reschedule import ReadyToRescheduleDep
@@ -50,12 +48,13 @@ class BaseSensorOperator(BaseOperator, SkipMixin):
         When set to ``poke`` the sensor is taking up a worker slot for its
         whole execution time and sleeps between pokes. Use this mode if the
         expected runtime of the sensor is short or if a short poke interval
-        is requried.
+        is required. Note that the sensor will hold onto a worker slot and
+        a pool slot for the duration of the sensor's runtime in this mode.
         When set to ``reschedule`` the sensor task frees the worker slot when
         the criteria is not yet met and it's rescheduled at a later time. Use
-        this mode if the expected time until the criteria is met is. The poke
-        interval should be more than one minute to prevent too much load on
-        the scheduler.
+        this mode if the time before the criteria is met is expected to be
+        quite long. The poke interval should be more than one minute to
+        prevent too much load on the scheduler.
     :type mode: str
     """
     ui_color = '#e6f1f2'
@@ -139,4 +138,6 @@ class BaseSensorOperator(BaseOperator, SkipMixin):
         Adds one additional dependency for all sensor operators that
         checks if a sensor task instance can be rescheduled.
         """
-        return BaseOperator.deps.fget(self) | {ReadyToRescheduleDep()}
+        if self.reschedule:
+            return BaseOperator.deps.fget(self) | {ReadyToRescheduleDep()}
+        return BaseOperator.deps.fget(self)

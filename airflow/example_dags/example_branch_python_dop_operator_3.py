@@ -17,14 +17,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import airflow
+"""
+Example DAG demonstrating the usage of BranchPythonOperator with depends_on_past=True, where tasks may be run
+or skipped on alternating runs.
+"""
+
 from airflow.models import DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import BranchPythonOperator
+from airflow.utils.dates import days_ago
 
 args = {
-    'owner': 'airflow',
-    'start_date': airflow.utils.dates.days_ago(2),
+    'owner': 'Airflow',
+    'start_date': days_ago(2),
     'depends_on_past': True,
 }
 
@@ -35,6 +40,7 @@ dag = DAG(
     dag_id='example_branch_dop_operator_v3',
     schedule_interval='*/1 * * * *',
     default_args=args,
+    tags=['example']
 )
 
 

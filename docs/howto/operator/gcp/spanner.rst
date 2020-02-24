@@ -1,4 +1,4 @@
-..  Licensed to the Apache Software Foundation (ASF) under one
+ .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
     regarding copyright ownership.  The ASF licenses this file
@@ -6,14 +6,16 @@
     "License"); you may not use this file except in compliance
     with the License.  You may obtain a copy of the License at
 
-..    http://www.apache.org/licenses/LICENSE-2.0
+ ..   http://www.apache.org/licenses/LICENSE-2.0
 
-..  Unless required by applicable law or agreed to in writing,
+ .. Unless required by applicable law or agreed to in writing,
     software distributed under the License is distributed on an
     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
     KIND, either express or implied.  See the License for the
     specific language governing permissions and limitations
     under the License.
+
+
 
 Google Cloud Spanner Operators
 ==============================
@@ -58,7 +60,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_spanner_delete_template_fields]
@@ -108,7 +110,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_spanner_database_deploy_template_fields]
@@ -131,7 +133,7 @@ existing database.
 You can optionally specify an operation_id parameter which simplifies determining whether
 the statements were executed in case the update_database call is replayed
 (idempotency check). The operation_id should be unique within the database, and must be
-a valid identifier: `[a-z][a-z0-9_]*`. More information can be found in
+a valid identifier: ``[a-z][a-z0-9_]*``. More information can be found in
 `the documentation of updateDdl API <https://cloud.google.com/spanner/docs/reference/rest/v1/projects.instances.databases/updateDdl>`_
 
 For parameter definition take a look at
@@ -168,7 +170,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_spanner_database_update_template_fields]
@@ -215,7 +217,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_spanner_query_template_fields]
@@ -263,7 +265,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_spanner_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_spanner_delete_template_fields]

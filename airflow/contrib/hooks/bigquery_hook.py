@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- # pylint: disable=too-many-lines
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -72,6 +72,7 @@ class BigQueryHook(GoogleCloudBaseHook, DbApiHook):
             project_id=project,
             use_legacy_sql=self.use_legacy_sql,
             location=self.location,
+            num_retries=self.num_retries
         )
 
     def get_service(self):
@@ -108,13 +109,16 @@ class BigQueryHook(GoogleCloudBaseHook, DbApiHook):
             defaults to use `self.use_legacy_sql` if not specified
         :type dialect: str in {'legacy', 'standard'}
         """
+        private_key = self._get_field('key_path', None) or self._get_field('keyfile_dict', None)
+
         if dialect is None:
             dialect = 'legacy' if self.use_legacy_sql else 'standard'
 
         return read_gbq(sql,
                         project_id=self._get_field('project'),
                         dialect=dialect,
-                        verbose=False)
+                        verbose=False,
+                        private_key=private_key)
 
     def table_exists(self, project_id, dataset_id, table_id):
         """
@@ -134,7 +138,7 @@ class BigQueryHook(GoogleCloudBaseHook, DbApiHook):
         try:
             service.tables().get(
                 projectId=project_id, datasetId=dataset_id,
-                tableId=table_id).execute()
+                tableId=table_id).execute(num_retries=self.num_retries)
             return True
         except HttpError as e:
             if e.resp['status'] == '404':
@@ -180,11 +184,9 @@ class BigQueryConnection(object):
 
     def close(self):
         """ BigQueryConnection does not have anything to close. """
-        pass
 
     def commit(self):
         """ BigQueryConnection does not support transactions. """
-        pass
 
     def cursor(self):
         """ Return a new :py:class:`Cursor` object using the connection. """
@@ -207,7 +209,8 @@ class BigQueryBaseCursor(LoggingMixin):
                  project_id,
                  use_legacy_sql=True,
                  api_resource_configs=None,
-                 location=None):
+                 location=None,
+                 num_retries=5):
 
         self.service = service
         self.project_id = project_id
@@ -218,15 +221,20 @@ class BigQueryBaseCursor(LoggingMixin):
             if api_resource_configs else {}
         self.running_job_id = None
         self.location = location
+        self.num_retries = num_retries
 
+    # pylint: disable=too-many-arguments
     def create_empty_table(self,
                            project_id,
                            dataset_id,
                            table_id,
                            schema_fields=None,
                            time_partitioning=None,
+                           cluster_fields=None,
                            labels=None,
-                           view=None):
+                           view=None,
+                           encryption_configuration=None,
+                           num_retries=5):
         """
         Creates a new, empty table in the dataset.
         To create a view, which is defined by a SQL query, parse a dictionary to 'view' kwarg
@@ -254,6 +262,11 @@ class BigQueryBaseCursor(LoggingMixin):
             .. seealso::
                 https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#timePartitioning
         :type time_partitioning: dict
+        :param cluster_fields: [Optional] The fields used for clustering.
+            Must be specified with time_partitioning, data in the table will be first
+            partitioned and subsequently clustered.
+            https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#clustering.fields
+        :type cluster_fields: list
         :param view: [Optional] A dictionary containing definition for the view.
             If set, it will create a view instead of a table:
             https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#view
@@ -266,6 +279,13 @@ class BigQueryBaseCursor(LoggingMixin):
                 "useLegacySql": False
             }
 
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
         :return: None
         """
 
@@ -283,11 +303,21 @@ class BigQueryBaseCursor(LoggingMixin):
         if time_partitioning:
             table_resource['timePartitioning'] = time_partitioning
 
+        if cluster_fields:
+            table_resource['clustering'] = {
+                'fields': cluster_fields
+            }
+
         if labels:
             table_resource['labels'] = labels
 
         if view:
             table_resource['view'] = view
+
+        if encryption_configuration:
+            table_resource["encryptionConfiguration"] = encryption_configuration
+
+        num_retries = num_retries if num_retries else self.num_retries
 
         self.log.info('Creating Table %s:%s.%s',
                       project_id, dataset_id, table_id)
@@ -296,7 +326,7 @@ class BigQueryBaseCursor(LoggingMixin):
             self.service.tables().insert(
                 projectId=project_id,
                 datasetId=dataset_id,
-                body=table_resource).execute()
+                body=table_resource).execute(num_retries=num_retries)
 
             self.log.info('Table created successfully: %s:%s.%s',
                           project_id, dataset_id, table_id)
@@ -320,8 +350,10 @@ class BigQueryBaseCursor(LoggingMixin):
                               quote_character=None,
                               allow_quoted_newlines=False,
                               allow_jagged_rows=False,
+                              encoding="UTF-8",
                               src_fmt_configs=None,
-                              labels=None
+                              labels=None,
+                              encryption_configuration=None
                               ):
         """
         Creates a new external table in the dataset with the data in Google
@@ -380,10 +412,22 @@ class BigQueryBaseCursor(LoggingMixin):
             records, an invalid error is returned in the job result. Only applicable when
             soure_format is CSV.
         :type allow_jagged_rows: bool
+        :param encoding: The character encoding of the data. See:
+
+            .. seealso::
+                https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#externalDataConfiguration.csvOptions.encoding
+        :type encoding: str
         :param src_fmt_configs: configure optional fields specific to the source format
         :type src_fmt_configs: dict
         :param labels: a dictionary containing labels for the table, passed to BigQuery
         :type labels: dict
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
         """
 
         if src_fmt_configs is None:
@@ -445,16 +489,12 @@ class BigQueryBaseCursor(LoggingMixin):
 
         # if following fields are not specified in src_fmt_configs,
         # honor the top-level params for backward-compatibility
-        if 'skipLeadingRows' not in src_fmt_configs:
-            src_fmt_configs['skipLeadingRows'] = skip_leading_rows
-        if 'fieldDelimiter' not in src_fmt_configs:
-            src_fmt_configs['fieldDelimiter'] = field_delimiter
-        if 'quote_character' not in src_fmt_configs:
-            src_fmt_configs['quote'] = quote_character
-        if 'allowQuotedNewlines' not in src_fmt_configs:
-            src_fmt_configs['allowQuotedNewlines'] = allow_quoted_newlines
-        if 'allowJaggedRows' not in src_fmt_configs:
-            src_fmt_configs['allowJaggedRows'] = allow_jagged_rows
+        backward_compatibility_configs = {'skipLeadingRows': skip_leading_rows,
+                                          'fieldDelimiter': field_delimiter,
+                                          'quote': quote_character,
+                                          'allowQuotedNewlines': allow_quoted_newlines,
+                                          'allowJaggedRows': allow_jagged_rows,
+                                          'encoding': encoding}
 
         src_fmt_to_param_mapping = {
             'CSV': 'csvOptions',
@@ -465,21 +505,18 @@ class BigQueryBaseCursor(LoggingMixin):
             'csvOptions': [
                 'allowJaggedRows', 'allowQuotedNewlines',
                 'fieldDelimiter', 'skipLeadingRows',
-                'quote'
+                'quote', 'encoding'
             ],
             'googleSheetsOptions': ['skipLeadingRows']
         }
 
         if source_format in src_fmt_to_param_mapping.keys():
-
             valid_configs = src_fmt_to_configs_mapping[
                 src_fmt_to_param_mapping[source_format]
             ]
 
-            src_fmt_configs = {
-                k: v
-                for k, v in src_fmt_configs.items() if k in valid_configs
-            }
+            src_fmt_configs = _validate_src_fmt_configs(source_format, src_fmt_configs, valid_configs,
+                                                        backward_compatibility_configs)
 
             table_resource['externalDataConfiguration'][src_fmt_to_param_mapping[
                 source_format]] = src_fmt_configs
@@ -487,12 +524,15 @@ class BigQueryBaseCursor(LoggingMixin):
         if labels:
             table_resource['labels'] = labels
 
+        if encryption_configuration:
+            table_resource["encryptionConfiguration"] = encryption_configuration
+
         try:
             self.service.tables().insert(
                 projectId=project_id,
                 datasetId=dataset_id,
                 body=table_resource
-            ).execute()
+            ).execute(num_retries=self.num_retries)
 
             self.log.info('External table created successfully: %s',
                           external_project_dataset_table)
@@ -514,7 +554,8 @@ class BigQueryBaseCursor(LoggingMixin):
                     schema=None,
                     time_partitioning=None,
                     view=None,
-                    require_partition_filter=None):
+                    require_partition_filter=None,
+                    encryption_configuration=None):
         """
         Patch information in an existing table.
         It only updates fileds that are provided in the request object.
@@ -566,6 +607,13 @@ class BigQueryBaseCursor(LoggingMixin):
         :param require_partition_filter: [Optional] If true, queries over the this table require a
             partition filter. If false, queries over the table
         :type require_partition_filter: bool
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
 
         """
 
@@ -591,6 +639,8 @@ class BigQueryBaseCursor(LoggingMixin):
             table_resource['view'] = view
         if require_partition_filter is not None:
             table_resource['requirePartitionFilter'] = require_partition_filter
+        if encryption_configuration:
+            table_resource["encryptionConfiguration"] = encryption_configuration
 
         self.log.info('Patching Table %s:%s.%s',
                       project_id, dataset_id, table_id)
@@ -600,7 +650,7 @@ class BigQueryBaseCursor(LoggingMixin):
                 projectId=project_id,
                 datasetId=dataset_id,
                 tableId=table_id,
-                body=table_resource).execute()
+                body=table_resource).execute(num_retries=self.num_retries)
 
             self.log.info('Table patched successfully: %s:%s.%s',
                           project_id, dataset_id, table_id)
@@ -610,7 +660,7 @@ class BigQueryBaseCursor(LoggingMixin):
                 'BigQuery job failed. Error was: {}'.format(err.content)
             )
 
-    def run_query(self,
+    def run_query(self,  # pylint: disable=too-many-locals,too-many-arguments
                   bql=None,
                   sql=None,
                   destination_dataset_table=None,
@@ -624,12 +674,13 @@ class BigQueryBaseCursor(LoggingMixin):
                   create_disposition='CREATE_IF_NEEDED',
                   query_params=None,
                   labels=None,
-                  schema_update_options=(),
+                  schema_update_options=None,
                   priority='INTERACTIVE',
                   time_partitioning=None,
                   api_resource_configs=None,
                   cluster_fields=None,
-                  location=None):
+                  location=None,
+                  encryption_configuration=None):
         """
         Executes a BigQuery SQL query. Optionally persists results in a BigQuery
         table. See here:
@@ -688,7 +739,7 @@ class BigQueryBaseCursor(LoggingMixin):
         :type labels: dict
         :param schema_update_options: Allows the schema of the destination
             table to be updated as a side effect of the query job.
-        :type schema_update_options: tuple
+        :type schema_update_options: Union[list, tuple, set]
         :param priority: Specifies a priority for the query.
             Possible values include INTERACTIVE and BATCH.
             The default value is INTERACTIVE.
@@ -704,7 +755,15 @@ class BigQueryBaseCursor(LoggingMixin):
             US and EU. See details at
             https://cloud.google.com/bigquery/docs/locations#specifying_your_location
         :type location: str
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
         """
+        schema_update_options = list(schema_update_options or [])
 
         if time_partitioning is None:
             time_partitioning = {}
@@ -788,15 +847,12 @@ class BigQueryBaseCursor(LoggingMixin):
             (maximum_billing_tier, 'maximumBillingTier', None, int),
             (maximum_bytes_billed, 'maximumBytesBilled', None, float),
             (time_partitioning, 'timePartitioning', {}, dict),
-            (schema_update_options, 'schemaUpdateOptions', None, tuple),
+            (schema_update_options, 'schemaUpdateOptions', None, list),
             (destination_dataset_table, 'destinationTable', None, dict),
             (cluster_fields, 'clustering', None, dict),
         ]
 
-        for param_tuple in query_param_list:
-
-            param, param_name, param_default, param_type = param_tuple
-
+        for param, param_name, param_default, param_type in query_param_list:
             if param_name not in configuration['query'] and param in [None, {}, ()]:
                 if param_name == 'timePartitioning':
                     param_default = _cleanse_time_partitioning(
@@ -845,6 +901,11 @@ class BigQueryBaseCursor(LoggingMixin):
             _api_resource_configs_duplication_check(
                 'labels', labels, configuration)
             configuration['labels'] = labels
+
+        if encryption_configuration:
+            configuration["query"][
+                "destinationEncryptionConfiguration"
+            ] = encryption_configuration
 
         return self.run_with_configuration(configuration)
 
@@ -921,7 +982,8 @@ class BigQueryBaseCursor(LoggingMixin):
                  destination_project_dataset_table,
                  write_disposition='WRITE_EMPTY',
                  create_disposition='CREATE_IF_NEEDED',
-                 labels=None):
+                 labels=None,
+                 encryption_configuration=None):
         """
         Executes a BigQuery copy command to copy data from one BigQuery table
         to another. See here:
@@ -947,6 +1009,13 @@ class BigQueryBaseCursor(LoggingMixin):
         :param labels: a dictionary containing labels for the job/query,
             passed to BigQuery
         :type labels: dict
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
         """
         source_project_dataset_tables = ([
             source_project_dataset_tables
@@ -987,6 +1056,11 @@ class BigQueryBaseCursor(LoggingMixin):
         if labels:
             configuration['labels'] = labels
 
+        if encryption_configuration:
+            configuration["copy"][
+                "destinationEncryptionConfiguration"
+            ] = encryption_configuration
+
         return self.run_with_configuration(configuration)
 
     def run_load(self,
@@ -1003,11 +1077,13 @@ class BigQueryBaseCursor(LoggingMixin):
                  ignore_unknown_values=False,
                  allow_quoted_newlines=False,
                  allow_jagged_rows=False,
-                 schema_update_options=(),
+                 encoding="UTF-8",
+                 schema_update_options=None,
                  src_fmt_configs=None,
                  time_partitioning=None,
                  cluster_fields=None,
-                 autodetect=False):
+                 autodetect=False,
+                 encryption_configuration=None):
         """
         Executes a BigQuery load command to load data from Google Cloud Storage
         to BigQuery. See here:
@@ -1065,9 +1141,14 @@ class BigQueryBaseCursor(LoggingMixin):
             records, an invalid error is returned in the job result. Only applicable when
             soure_format is CSV.
         :type allow_jagged_rows: bool
+        :param encoding: The character encoding of the data.
+
+            .. seealso::
+                https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#externalDataConfiguration.csvOptions.encoding
+        :type encoding: str
         :param schema_update_options: Allows the schema of the destination
             table to be updated as a side effect of the load job.
-        :type schema_update_options: tuple
+        :type schema_update_options: Union[list, tuple, set]
         :param src_fmt_configs: configure optional fields specific to the source format
         :type src_fmt_configs: dict
         :param time_partitioning: configure optional time partitioning fields i.e.
@@ -1077,7 +1158,16 @@ class BigQueryBaseCursor(LoggingMixin):
             by one or more columns. This is only available in combination with
             time_partitioning. The order of columns given determines the sort order.
         :type cluster_fields: list[str]
+        :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+            **Example**: ::
+
+                encryption_configuration = {
+                    "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+                }
+        :type encryption_configuration: dict
         """
+        # To provide backward compatibility
+        schema_update_options = list(schema_update_options or [])
 
         # bigquery only allows certain source formats
         # we check to make sure the passed source format is valid
@@ -1168,35 +1258,37 @@ class BigQueryBaseCursor(LoggingMixin):
         if max_bad_records:
             configuration['load']['maxBadRecords'] = max_bad_records
 
-        # if following fields are not specified in src_fmt_configs,
-        # honor the top-level params for backward-compatibility
-        if 'skipLeadingRows' not in src_fmt_configs:
-            src_fmt_configs['skipLeadingRows'] = skip_leading_rows
-        if 'fieldDelimiter' not in src_fmt_configs:
-            src_fmt_configs['fieldDelimiter'] = field_delimiter
-        if 'ignoreUnknownValues' not in src_fmt_configs:
-            src_fmt_configs['ignoreUnknownValues'] = ignore_unknown_values
-        if quote_character is not None:
-            src_fmt_configs['quote'] = quote_character
-        if allow_quoted_newlines:
-            src_fmt_configs['allowQuotedNewlines'] = allow_quoted_newlines
+        if encryption_configuration:
+            configuration["load"][
+                "destinationEncryptionConfiguration"
+            ] = encryption_configuration
 
         src_fmt_to_configs_mapping = {
             'CSV': [
                 'allowJaggedRows', 'allowQuotedNewlines', 'autodetect',
                 'fieldDelimiter', 'skipLeadingRows', 'ignoreUnknownValues',
-                'nullMarker', 'quote'
+                'nullMarker', 'quote', 'encoding'
             ],
             'DATASTORE_BACKUP': ['projectionFields'],
             'NEWLINE_DELIMITED_JSON': ['autodetect', 'ignoreUnknownValues'],
             'PARQUET': ['autodetect', 'ignoreUnknownValues'],
             'AVRO': ['useAvroLogicalTypes'],
         }
+
         valid_configs = src_fmt_to_configs_mapping[source_format]
-        src_fmt_configs = {
-            k: v
-            for k, v in src_fmt_configs.items() if k in valid_configs
-        }
+
+        # if following fields are not specified in src_fmt_configs,
+        # honor the top-level params for backward-compatibility
+        backward_compatibility_configs = {'skipLeadingRows': skip_leading_rows,
+                                          'fieldDelimiter': field_delimiter,
+                                          'ignoreUnknownValues': ignore_unknown_values,
+                                          'quote': quote_character,
+                                          'allowQuotedNewlines': allow_quoted_newlines,
+                                          'encoding': encoding}
+
+        src_fmt_configs = _validate_src_fmt_configs(source_format, src_fmt_configs, valid_configs,
+                                                    backward_compatibility_configs)
+
         configuration['load'].update(src_fmt_configs)
 
         if allow_jagged_rows:
@@ -1223,22 +1315,26 @@ class BigQueryBaseCursor(LoggingMixin):
         # Send query and wait for reply.
         query_reply = jobs \
             .insert(projectId=self.project_id, body=job_data) \
-            .execute()
+            .execute(num_retries=self.num_retries)
         self.running_job_id = query_reply['jobReference']['jobId']
+        if 'location' in query_reply['jobReference']:
+            location = query_reply['jobReference']['location']
+        else:
+            location = self.location
 
         # Wait for query to finish.
         keep_polling_job = True
         while keep_polling_job:
             try:
-                if self.location:
+                if location:
                     job = jobs.get(
                         projectId=self.project_id,
                         jobId=self.running_job_id,
-                        location=self.location).execute()
+                        location=location).execute(num_retries=self.num_retries)
                 else:
                     job = jobs.get(
                         projectId=self.project_id,
-                        jobId=self.running_job_id).execute()
+                        jobId=self.running_job_id).execute(num_retries=self.num_retries)
                 if job['status']['state'] == 'DONE':
                     keep_polling_job = False
                     # Check if job had errors.
@@ -1270,10 +1366,10 @@ class BigQueryBaseCursor(LoggingMixin):
             if self.location:
                 job = jobs.get(projectId=self.project_id,
                                jobId=job_id,
-                               location=self.location).execute()
+                               location=self.location).execute(num_retries=self.num_retries)
             else:
                 job = jobs.get(projectId=self.project_id,
-                               jobId=job_id).execute()
+                               jobId=job_id).execute(num_retries=self.num_retries)
             if job['status']['state'] == 'DONE':
                 return True
         except HttpError as err:
@@ -1300,11 +1396,11 @@ class BigQueryBaseCursor(LoggingMixin):
                 jobs.cancel(
                     projectId=self.project_id,
                     jobId=self.running_job_id,
-                    location=self.location).execute()
+                    location=self.location).execute(num_retries=self.num_retries)
             else:
                 jobs.cancel(
                     projectId=self.project_id,
-                    jobId=self.running_job_id).execute()
+                    jobId=self.running_job_id).execute(num_retries=self.num_retries)
         else:
             self.log.info('No running BigQuery jobs to cancel.')
             return
@@ -1341,7 +1437,7 @@ class BigQueryBaseCursor(LoggingMixin):
         """
         tables_resource = self.service.tables() \
             .get(projectId=self.project_id, datasetId=dataset_id, tableId=table_id) \
-            .execute()
+            .execute(num_retries=self.num_retries)
         return tables_resource['schema']
 
     def get_tabledata(self, dataset_id, table_id,
@@ -1374,7 +1470,7 @@ class BigQueryBaseCursor(LoggingMixin):
             projectId=self.project_id,
             datasetId=dataset_id,
             tableId=table_id,
-            **optional_params).execute())
+            **optional_params).execute(num_retries=self.num_retries))
 
     def run_table_delete(self, deletion_dataset_table,
                          ignore_if_missing=False):
@@ -1401,7 +1497,7 @@ class BigQueryBaseCursor(LoggingMixin):
                 .delete(projectId=deletion_project,
                         datasetId=deletion_dataset,
                         tableId=deletion_table) \
-                .execute()
+                .execute(num_retries=self.num_retries)
             self.log.info('Deleted table %s:%s.%s.', deletion_project,
                           deletion_dataset, deletion_table)
         except HttpError:
@@ -1430,7 +1526,7 @@ class BigQueryBaseCursor(LoggingMixin):
         table_id = table_resource['tableReference']['tableId']
         project_id = project_id if project_id is not None else self.project_id
         tables_list_resp = self.service.tables().list(
-            projectId=project_id, datasetId=dataset_id).execute()
+            projectId=project_id, datasetId=dataset_id).execute(num_retries=self.num_retries)
         while True:
             for table in tables_list_resp.get('tables', []):
                 if table['tableReference']['tableId'] == table_id:
@@ -1441,14 +1537,14 @@ class BigQueryBaseCursor(LoggingMixin):
                         projectId=project_id,
                         datasetId=dataset_id,
                         tableId=table_id,
-                        body=table_resource).execute()
+                        body=table_resource).execute(num_retries=self.num_retries)
             # If there is a next page, we need to check the next page.
             if 'nextPageToken' in tables_list_resp:
                 tables_list_resp = self.service.tables()\
                     .list(projectId=project_id,
                           datasetId=dataset_id,
                           pageToken=tables_list_resp['nextPageToken'])\
-                    .execute()
+                    .execute(num_retries=self.num_retries)
             # If there is no next page, then the table doesn't exist.
             else:
                 # do insert
@@ -1457,7 +1553,7 @@ class BigQueryBaseCursor(LoggingMixin):
                 return self.service.tables().insert(
                     projectId=project_id,
                     datasetId=dataset_id,
-                    body=table_resource).execute()
+                    body=table_resource).execute(num_retries=self.num_retries)
 
     def run_grant_dataset_view_access(self,
                                       source_dataset,
@@ -1492,7 +1588,7 @@ class BigQueryBaseCursor(LoggingMixin):
         # we don't want to clobber any existing accesses, so we have to get
         # info on the dataset before we can add view access
         source_dataset_resource = self.service.datasets().get(
-            projectId=source_project, datasetId=source_dataset).execute()
+            projectId=source_project, datasetId=source_dataset).execute(num_retries=self.num_retries)
         access = source_dataset_resource[
             'access'] if 'access' in source_dataset_resource else []
         view_access = {
@@ -1514,7 +1610,7 @@ class BigQueryBaseCursor(LoggingMixin):
                 datasetId=source_dataset,
                 body={
                     'access': access
-                }).execute()
+                }).execute(num_retries=self.num_retries)
         else:
             # if view is already in access, do nothing.
             self.log.info(
@@ -1580,7 +1676,7 @@ class BigQueryBaseCursor(LoggingMixin):
         try:
             self.service.datasets().insert(
                 projectId=dataset_project_id,
-                body=dataset_reference).execute()
+                body=dataset_reference).execute(num_retries=self.num_retries)
             self.log.info('Dataset created successfully: In project %s '
                           'Dataset %s', dataset_project_id, dataset_id)
 
@@ -1589,13 +1685,19 @@ class BigQueryBaseCursor(LoggingMixin):
                 'BigQuery job failed. Error was: {}'.format(err.content)
             )
 
-    def delete_dataset(self, project_id, dataset_id):
+    def delete_dataset(self, project_id, dataset_id, delete_contents=False):
         """
         Delete a dataset of Big query in your project.
+
         :param project_id: The name of the project where we have the dataset .
         :type project_id: str
         :param dataset_id: The dataset to be delete.
         :type dataset_id: str
+        :param delete_contents: [Optional] Whether to force the deletion even if the dataset is not empty.
+            Will delete all tables (if any) in the dataset if set to True.
+            Will raise HttpError 400: "{dataset_id} is still in use" if set to False and dataset is not empty.
+            The default value is False.
+        :type delete_contents: bool
         :return:
         """
         project_id = project_id if project_id is not None else self.project_id
@@ -1605,7 +1707,8 @@ class BigQueryBaseCursor(LoggingMixin):
         try:
             self.service.datasets().delete(
                 projectId=project_id,
-                datasetId=dataset_id).execute()
+                datasetId=dataset_id,
+                deleteContents=delete_contents).execute(num_retries=self.num_retries)
             self.log.info('Dataset deleted successfully: In project %s '
                           'Dataset %s', project_id, dataset_id)
 
@@ -1638,7 +1741,7 @@ class BigQueryBaseCursor(LoggingMixin):
 
         try:
             dataset_resource = self.service.datasets().get(
-                datasetId=dataset_id, projectId=dataset_project_id).execute()
+                datasetId=dataset_id, projectId=dataset_project_id).execute(num_retries=self.num_retries)
             self.log.info("Dataset Resource: %s", dataset_resource)
         except HttpError as err:
             raise AirflowException(
@@ -1685,7 +1788,7 @@ class BigQueryBaseCursor(LoggingMixin):
 
         try:
             datasets_list = self.service.datasets().list(
-                projectId=dataset_project_id).execute()['datasets']
+                projectId=dataset_project_id).execute(num_retries=self.num_retries)['datasets']
             self.log.info("Datasets List: %s", datasets_list)
 
         except HttpError as err:
@@ -1693,6 +1796,97 @@ class BigQueryBaseCursor(LoggingMixin):
                 'BigQuery job failed. Error was: {}'.format(err.content))
 
         return datasets_list
+
+    def patch_dataset(self, dataset_id, dataset_resource, project_id=None):
+        """
+        Patches information in an existing dataset.
+        It only replaces fields that are provided in the submitted dataset resource.
+        More info:
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets/patch
+
+        :param dataset_id: The BigQuery Dataset ID
+        :type dataset_id: str
+        :param dataset_resource: Dataset resource that will be provided
+            in request body.
+            https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+        :type dataset_resource: dict
+        :param project_id: The GCP Project ID
+        :type project_id: str
+        :rtype: dataset
+            https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+        """
+
+        if not dataset_id or not isinstance(dataset_id, str):
+            raise ValueError(
+                "dataset_id argument must be provided and has "
+                "a type 'str'. You provided: {}".format(dataset_id)
+            )
+
+        dataset_project_id = project_id if project_id else self.project_id
+
+        try:
+            dataset = (
+                self.service.datasets()
+                .patch(
+                    datasetId=dataset_id,
+                    projectId=dataset_project_id,
+                    body=dataset_resource,
+                )
+                .execute(num_retries=self.num_retries)
+            )
+            self.log.info("Dataset successfully patched: %s", dataset)
+        except HttpError as err:
+            raise AirflowException(
+                "BigQuery job failed. Error was: {}".format(err.content)
+            )
+
+        return dataset
+
+    def update_dataset(self, dataset_id, dataset_resource, project_id=None):
+        """
+        Updates information in an existing dataset. The update method replaces the entire
+        dataset resource, whereas the patch method only replaces fields that are provided
+        in the submitted dataset resource.
+        More info:
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets/update
+
+        :param dataset_id: The BigQuery Dataset ID
+        :type dataset_id: str
+        :param dataset_resource: Dataset resource that will be provided
+            in request body.
+            https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+        :type dataset_resource: dict
+        :param project_id: The GCP Project ID
+        :type project_id: str
+        :rtype: dataset
+            https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+        """
+
+        if not dataset_id or not isinstance(dataset_id, str):
+            raise ValueError(
+                "dataset_id argument must be provided and has "
+                "a type 'str'. You provided: {}".format(dataset_id)
+            )
+
+        dataset_project_id = project_id if project_id else self.project_id
+
+        try:
+            dataset = (
+                self.service.datasets()
+                .update(
+                    datasetId=dataset_id,
+                    projectId=dataset_project_id,
+                    body=dataset_resource,
+                )
+                .execute(num_retries=self.num_retries)
+            )
+            self.log.info("Dataset successfully updated: %s", dataset)
+        except HttpError as err:
+            raise AirflowException(
+                "BigQuery job failed. Error was: {}".format(err.content)
+            )
+
+        return dataset
 
     def insert_all(self, project_id, dataset_id, table_id,
                    rows, ignore_unknown_values=False,
@@ -1749,7 +1943,7 @@ class BigQueryBaseCursor(LoggingMixin):
             resp = self.service.tabledata().insertAll(
                 projectId=dataset_project_id, datasetId=dataset_id,
                 tableId=table_id, body=body
-            ).execute()
+            ).execute(num_retries=self.num_retries)
 
             if 'insertErrors' not in resp:
                 self.log.info(
@@ -1780,12 +1974,13 @@ class BigQueryCursor(BigQueryBaseCursor):
     https://github.com/dropbox/PyHive/blob/master/pyhive/common.py
     """
 
-    def __init__(self, service, project_id, use_legacy_sql=True, location=None):
+    def __init__(self, service, project_id, use_legacy_sql=True, location=None, num_retries=5):
         super(BigQueryCursor, self).__init__(
             service=service,
             project_id=project_id,
             use_legacy_sql=use_legacy_sql,
             location=location,
+            num_retries=num_retries
         )
         self.buffersize = None
         self.page_token = None
@@ -1800,7 +1995,6 @@ class BigQueryCursor(BigQueryBaseCursor):
 
     def close(self):
         """ By default, do nothing """
-        pass
 
     @property
     def rowcount(self):
@@ -1833,6 +2027,13 @@ class BigQueryCursor(BigQueryBaseCursor):
         for parameters in seq_of_parameters:
             self.execute(operation, parameters)
 
+    def flush_results(self):
+        """ Flush results related cursor attributes. """
+        self.page_token = None
+        self.job_id = None
+        self.all_pages_loaded = False
+        self.buffer = []
+
     def fetchone(self):
         """ Fetch the next row of a query result set. """
         return self.next()
@@ -1853,7 +2054,7 @@ class BigQueryCursor(BigQueryBaseCursor):
             query_results = (self.service.jobs().getQueryResults(
                 projectId=self.project_id,
                 jobId=self.job_id,
-                pageToken=self.page_token).execute())
+                pageToken=self.page_token).execute(num_retries=self.num_retries))
 
             if 'rows' in query_results and query_results['rows']:
                 self.page_token = query_results.get('pageToken')
@@ -1873,9 +2074,7 @@ class BigQueryCursor(BigQueryBaseCursor):
 
             else:
                 # Reset all state since we've exhausted the results.
-                self.page_token = None
-                self.job_id = None
-                self.page_token = None
+                self.flush_results()
                 return None
 
         return self.buffer.pop(0)
@@ -1929,11 +2128,9 @@ class BigQueryCursor(BigQueryBaseCursor):
 
     def setinputsizes(self, sizes):
         """ Does nothing by default """
-        pass
 
     def setoutputsize(self, size, column=None):
         """ Does nothing by default """
-        pass
 
 
 def _bind_parameters(operation, parameters):
@@ -2075,3 +2272,34 @@ def _api_resource_configs_duplication_check(key, value, config_dict,
                          "in `query` config and {param_name} was also provided "
                          "with arg to run_query() method. Please remove duplicates."
                          .format(param_name=key, dict_name=config_dict_name))
+
+
+def _validate_src_fmt_configs(source_format, src_fmt_configs, valid_configs,
+                              backward_compatibility_configs=None):
+    """
+    Validates the given src_fmt_configs against a valid configuration for the source format.
+    Adds the backward compatiblity config to the src_fmt_configs.
+
+    :param source_format: File format to export.
+    :type source_format: str
+    :param src_fmt_configs: Configure optional fields specific to the source format.
+    :type src_fmt_configs: dict
+    :param valid_configs: Valid configuration specific to the source format
+    :type valid_configs: List[str]
+    :param backward_compatibility_configs: The top-level params for backward-compatibility
+    :type backward_compatibility_configs: dict
+    """
+
+    if backward_compatibility_configs is None:
+        backward_compatibility_configs = {}
+
+    for k, v in backward_compatibility_configs.items():
+        if k not in src_fmt_configs and k in valid_configs:
+            src_fmt_configs[k] = v
+
+    for k, v in src_fmt_configs.items():
+        if k not in valid_configs:
+            raise ValueError("{0} is not a valid src_fmt_configs for type {1}."
+                             .format(k, source_format))
+
+    return src_fmt_configs

@@ -1,4 +1,4 @@
-..  Licensed to the Apache Software Foundation (ASF) under one
+ .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
     regarding copyright ownership.  The ASF licenses this file
@@ -6,14 +6,16 @@
     "License"); you may not use this file except in compliance
     with the License.  You may obtain a copy of the License at
 
-..    http://www.apache.org/licenses/LICENSE-2.0
+ ..   http://www.apache.org/licenses/LICENSE-2.0
 
-..  Unless required by applicable law or agreed to in writing,
+ .. Unless required by applicable law or agreed to in writing,
     software distributed under the License is distributed on an
     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
     KIND, either express or implied.  See the License for the
     specific language governing permissions and limitations
     under the License.
+
+
 
 Google Cloud Sql Operators
 ==========================
@@ -64,7 +66,7 @@ Example request body:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_db_create_template_fields]
@@ -111,7 +113,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_db_delete_template_fields]
@@ -167,7 +169,7 @@ Example request body:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_db_patch_template_fields]
@@ -225,7 +227,7 @@ Replicas are deleted the same way as primary instances:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_delete_template_fields]
@@ -289,7 +291,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_export_template_fields]
@@ -386,7 +388,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_import_template_fields]
@@ -481,7 +483,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_create_template_fields]
@@ -539,7 +541,7 @@ it will be retrieved from the GCP connection used. Both variants are shown:
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_patch_template_fields]
@@ -568,7 +570,7 @@ dynamically as needed by the operator.
 There is a *gcpcloudsql://* connection type that you should use to define what
 kind of connectivity you want the operator to use. The connection is a "meta"
 type of connection. It is not used to make an actual connectivity on its own, but it
-determines whether Cloud SQL Proxy should be started by `CloudSqlDatabaseHook`
+determines whether Cloud SQL Proxy should be started by ``CloudSqlDatabaseHook``
 and what kind of database connection (Postgres or MySQL) should be created
 dynamically to connect to Cloud SQL via public IP address or via the proxy.
 The 'CloudSqlDatabaseHook` uses
@@ -578,7 +580,7 @@ Proxy lifecycle (each task has its own Cloud SQL Proxy)
 When you build connection, you should use connection parameters as described in
 :class:`~airflow.contrib.hooks.gcp_sql_hook.CloudSqlDatabaseHook`. You can see
 examples of connections below for all the possible types of connectivity. Such connection
-can be reused between different tasks (instances of `CloudSqlQueryOperator`). Each
+can be reused between different tasks (instances of ``CloudSqlQueryOperator``). Each
 task will get their own proxy started if needed with their own TCP or UNIX socket.
 
 For parameter definition, take a look at
@@ -592,7 +594,7 @@ used to create tables in an idempotent way.
 Arguments
 """""""""
 
-If you define connection via `AIRFLOW_CONN_*` URL defined in an environment
+If you define connection via ``AIRFLOW_CONN_*`` URL defined in an environment
 variable, make sure the URL components in the URL are URL-encoded.
 See examples below for details.
 
@@ -620,7 +622,7 @@ Using the operator
 """"""""""""""""""
 
 Example operators below are using all connectivity options. Note connection id
-from the operator matches the `AIRFLOW_CONN_*` postfix uppercase. This is
+from the operator matches the ``AIRFLOW_CONN_*`` postfix uppercase. This is
 standard AIRFLOW notation for defining connection via environment variables):
 
 .. exampleinclude:: ../../../../airflow/contrib/example_dags/example_gcp_sql_query.py
@@ -631,7 +633,7 @@ standard AIRFLOW notation for defining connection via environment variables):
 Templating
 """"""""""
 
-.. exampleinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
+.. literalinclude:: ../../../../airflow/contrib/operators/gcp_sql_operator.py
     :language: python
     :dedent: 4
     :start-after: [START gcp_sql_query_template_fields]

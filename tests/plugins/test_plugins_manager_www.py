@@ -34,6 +34,7 @@ from airflow.plugins_manager import load_entrypoint_plugins, is_valid_plugin
 from airflow.sensors.base_sensor_operator import BaseSensorOperator
 from airflow.executors.base_executor import BaseExecutor
 from airflow.www.app import create_app
+
 from tests.plugins.test_plugin import MockPluginA, MockPluginB, MockPluginC
 
 
@@ -55,8 +56,8 @@ class PluginsTest(unittest.TestCase):
         from airflow.executors.test_plugin import PluginExecutor
         self.assertTrue(issubclass(PluginExecutor, BaseExecutor))
 
-        from airflow.executors import GetDefaultExecutor
-        self.assertTrue(issubclass(type(GetDefaultExecutor()), BaseExecutor))
+        from airflow.executors import get_default_executor
+        self.assertTrue(issubclass(type(get_default_executor()), BaseExecutor))
 
         # test plugin executor import based on a name string, (like defined in airflow.cfg)
         # this is not identical to the first assertion!

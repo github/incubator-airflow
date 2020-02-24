@@ -23,7 +23,6 @@ from future import standard_library
 standard_library.install_aliases()  # noqa: E402
 from builtins import str, object
 
-from cgi import escape
 from io import BytesIO as IO
 import functools
 import gzip
@@ -42,12 +41,20 @@ import flask_admin.contrib.sqla.filters as sqlafilters
 from flask_login import current_user
 from six.moves.urllib.parse import urlencode
 
-from airflow import configuration, models, settings
+from airflow import models, settings
+from airflow.configuration import conf
 from airflow.utils.db import create_session
 from airflow.utils import timezone
 from airflow.utils.json import AirflowJsonEncoder
 
-AUTHENTICATE = configuration.conf.getboolean('webserver', 'AUTHENTICATE')
+try:
+    # cgi.escape has been deprecated since 3.3 and removed in 3.8
+    from html import escape
+except ImportError:
+    # Use cgi.escape for Python 2
+    from cgi import escape  # type: ignore
+
+AUTHENTICATE = conf.getboolean('webserver', 'AUTHENTICATE')
 
 DEFAULT_SENSITIVE_VARIABLE_FIELDS = (
     'password',
@@ -63,7 +70,7 @@ DEFAULT_SENSITIVE_VARIABLE_FIELDS = (
 def should_hide_value_for_key(key_name):
     # It is possible via importing variables from file that a key is empty.
     if key_name:
-        config_set = configuration.conf.getboolean('admin',
+        config_set = conf.getboolean('admin',
                                                    'hide_sensitive_variable_fields')
         field_comp = any(s in key_name.lower() for s in DEFAULT_SENSITIVE_VARIABLE_FIELDS)
         return config_set and field_comp
@@ -97,8 +104,8 @@ class DataProfilingMixin(object):
 
 
 def get_params(**kwargs):
-    hide_paused_dags_by_default = configuration.conf.getboolean('webserver',
-                                                                'hide_paused_dags_by_default')
+    hide_paused_dags_by_default = conf.getboolean('webserver',
+                                                  'hide_paused_dags_by_default')
     if 'showPaused' in kwargs:
         show_paused_dags_url_param = kwargs['showPaused']
         if _should_remove_show_paused_from_url_params(
@@ -130,18 +137,13 @@ def generate_pages(current_page, num_of_pages,
     This component takes into account custom parameters such as search and showPaused,
     which could be added to the pages link in order to maintain the state between
     client and server. It also allows to make a bookmark on a specific paging state.
-    :param current_page:
-        the current page number, 0-indexed
-    :param num_of_pages:
-        the total number of pages
-    :param search:
-        the search query string, if any
-    :param showPaused:
-        false if paused dags will be hidden, otherwise true to show them
-    :param window:
-        the number of pages to be shown in the paging component (7 default)
-    :return:
-        the HTML string of the paging component
+
+    :param current_page: the current page number, 0-indexed
+    :param num_of_pages: the total number of pages
+    :param search: the search query string, if any
+    :param showPaused: false if paused dags will be hidden, otherwise true to show them
+    :param window: the number of pages to be shown in the paging component (7 default)
+    :return: the HTML string of the paging component
     """
 
     void_link = 'javascript:void(0)'
@@ -150,11 +152,11 @@ def generate_pages(current_page, num_of_pages,
 </li>""")
 
     previous_node = Markup("""<li class="paginate_button previous {disabled}" id="dags_previous">
-    <a href="{href_link}" aria-controls="dags" data-dt-idx="0" tabindex="0">&lt;</a>
+    <a href="{href_link}" aria-controls="dags" data-dt-idx="0" tabindex="0">&lsaquo;</a>
 </li>""")
 
     next_node = Markup("""<li class="paginate_button next {disabled}" id="dags_next">
-    <a href="{href_link}" aria-controls="dags" data-dt-idx="3" tabindex="0">&gt;</a>
+    <a href="{href_link}" aria-controls="dags" data-dt-idx="3" tabindex="0">&rsaquo;</a>
 </li>""")
 
     last_node = Markup("""<li class="paginate_button {disabled}" id="dags_last">
@@ -235,21 +237,21 @@ def limit_sql(sql, limit, conn_type):
             SELECT TOP {limit} * FROM (
             {sql}
             ) qry
-            """.format(**locals())
+            """.format(limit=limit, sql=sql)
         elif conn_type in ['oracle']:
             sql = """\
             SELECT * FROM (
             {sql}
             ) qry
             WHERE ROWNUM <= {limit}
-            """.format(**locals())
+            """.format(limit=limit, sql=sql)
         else:
             sql = """\
             SELECT * FROM (
             {sql}
             ) qry
             LIMIT {limit}
-            """.format(**locals())
+            """.format(limit=limit, sql=sql)
     return sql
 
 
@@ -274,12 +276,12 @@ def action_logging(f):
             event=f.__name__,
             task_instance=None,
             owner=user,
-            extra=str(list(request.args.items())),
-            task_id=request.args.get('task_id'),
-            dag_id=request.args.get('dag_id'))
+            extra=str(list(request.values.items())),
+            task_id=request.values.get('task_id'),
+            dag_id=request.values.get('dag_id'))
 
-        if request.args.get('execution_date'):
-            log.execution_date = timezone.parse(request.args.get('execution_date'))
+        if request.values.get('execution_date'):
+            log.execution_date = timezone.parse(request.values.get('execution_date'))
 
         with create_session() as session:
             session.add(log)
@@ -384,6 +386,9 @@ def gzipped(f):
     return view_func
 
 
+ZIP_REGEX = re.compile(r'((.*\.zip){})?(.*)'.format(re.escape(os.sep)))
+
+
 def open_maybe_zipped(f, mode='r'):
     """
     Opens the given file. If the path contains a folder with a .zip suffix, then
@@ -392,8 +397,7 @@ def open_maybe_zipped(f, mode='r'):
     :return: a file object, as in `open`, or as in `ZipFile.open`.
     """
 
-    _, archive, filename = re.search(
-        r'((.*\.zip){})?(.*)'.format(re.escape(os.sep)), f).groups()
+    _, archive, filename = ZIP_REGEX.search(f).groups()
     if archive and zipfile.is_zipfile(archive):
         return zipfile.ZipFile(archive, mode=mode).open(filename)
     else:
@@ -409,10 +413,16 @@ def make_cache_key(*args, **kwargs):
     return (path + args).encode('ascii', 'ignore')
 
 
-def get_python_source(x):
+def get_python_source(x, return_none_if_x_none=False):
     """
     Helper function to get Python source (or not), preventing exceptions
     """
+    if isinstance(x, str):
+        return x
+
+    if x is None and return_none_if_x_none:
+        return None
+
     source_code = None
 
     if isinstance(x, functools.partial):
@@ -459,6 +469,8 @@ class AceEditorWidget(wtforms.widgets.TextArea):
 class UtcDateTimeFilterMixin(object):
     def clean(self, value):
         dt = super(UtcDateTimeFilterMixin, self).clean(value)
+        if isinstance(dt, list):
+            return [timezone.make_aware(d, timezone=timezone.utc) for d in dt]
         return timezone.make_aware(dt, timezone=timezone.utc)
 
 

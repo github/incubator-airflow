@@ -1,20 +1,22 @@
 {#
-  Licensed to the Apache Software Foundation (ASF) under one or more
-  contributor license agreements.  See the NOTICE file distributed with
-  this work for additional information regarding copyright ownership.
-  The ASF licenses this file to You under the Apache License, Version 2.0
-  (the "License"); you may not use this file except in compliance with
-  the License.  You may obtain a copy of the License at
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
 #}
+
 {% extends "airflow/dag.html" %}
 {% import 'admin/lib.html' as lib with context %}
 {% import 'admin/static.html' as admin_static with context %}
@@ -29,8 +31,8 @@
 
 {% block body %}
 {{ super() }}
-{% if dag.doc_md %}
-<div class="rich_doc" style="margin-bottom: 15px;">{{ dag.doc_md|safe }}</div>
+{% if doc_md %}
+<div class="rich_doc" style="margin-bottom: 15px;">{{ doc_md|safe }}</div>
 {% endif %}
 <div class="form-inline">
   <form method="get" style="float:left;">
@@ -56,7 +58,7 @@
   {% for op in operators %}
   <div class="legend_item"
        style="border-width:1px;float:left;background:{{ op.ui_color }};color:{{ op.ui_fgcolor }};">
-    {{ op.__name__ }}
+    {{ op.task_type }}
   </div>
   {% endfor %}
 
@@ -65,6 +67,7 @@
     <div class="legend_item state" style="border-color:grey;">queued</div>
     <div class="legend_item state" style="border-color:gold;">up_for_retry</div>
     <div class="legend_item state" style="border-color:turquoise;">up_for_reschedule</div>
+    <div class="legend_item state" style="border-color:orange;">upstream_failed</div>
     <div class="legend_item state" style="border-color:pink;">skipped</div>
     <div class="legend_item state" style="border-color:red;">failed</div>
     <div class="legend_item state" style="border-color:lime;">running</div>
@@ -117,6 +120,7 @@
         'running':false,
         'failed':false,
         'skipped': false,
+        'upstream_failed': false,
         'up_for_reschedule': false,
         'up_for_retry': false,
         'queued': false,
@@ -132,10 +136,14 @@
 
     d3.selectAll("g.node").on("click", function(d){
         task = tasks[d];
-        if (task.task_type == "SubDagOperator")
-            call_modal(d, execution_date, task_instances[d].try_number, true);
+        if (d in task_instances)
+            try_number = task_instances[d].try_number;
         else
-            call_modal(d, execution_date,task_instances[d].try_number);
+            try_number = 0;
+        if (task.task_type == "SubDagOperator")
+            call_modal(d, execution_date, try_number, true);
+        else
+            call_modal(d, execution_date, try_number);
     });
 
 
@@ -291,7 +299,7 @@
               tt += "Operator: " + escapeHtml(task.task_type) + "<br>";
               tt += "Started: " + escapeHtml(ti.start_date) + "<br>";
               tt += "Ended: " + escapeHtml(ti.end_date) + "<br>";
-              tt += "Duration: " + escapeHtml(ti.duration) + "<br>";
+              tt += "Duration: " + escapeHtml(convertSecsToHumanReadable(ti.duration)) + "<br>";
               tt += "State: " + escapeHtml(ti.state) + "<br>";
               return tt;
             });

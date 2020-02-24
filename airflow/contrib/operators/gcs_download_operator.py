@@ -21,6 +21,7 @@ import sys
 
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
 from airflow.models import BaseOperator
+from airflow.models.xcom import MAX_XCOM_SIZE
 from airflow.utils.decorators import apply_defaults
 
 
@@ -28,12 +29,17 @@ class GoogleCloudStorageDownloadOperator(BaseOperator):
     """
     Downloads a file from Google Cloud Storage.
 
-    :param bucket: The Google cloud storage bucket where the object is. (templated)
+    If a filename is supplied, it writes the file to the specified location, alternatively one can
+    set the ``store_to_xcom_key`` parameter to True push the file content into xcom. When the file size
+    exceeds the maximum size for xcom it is recommended to write to a file.
+
+    :param bucket: The Google cloud storage bucket where the object is.
+        Must not contain 'gs://' prefix. (templated)
     :type bucket: str
     :param object: The name of the object to download in the Google cloud
         storage bucket. (templated)
     :type object: str
-    :param filename: The file path on the local file system (where the
+    :param filename: The file path, including filename,  on the local file system (where the
         operator is being executed) that the file should be downloaded to. (templated)
         If no filename passed, the downloaded data will not be stored on the local file
         system.
@@ -64,6 +70,10 @@ class GoogleCloudStorageDownloadOperator(BaseOperator):
                  *args,
                  **kwargs):
         super(GoogleCloudStorageDownloadOperator, self).__init__(*args, **kwargs)
+
+        if filename is not None and store_to_xcom_key is not None:
+            raise ValueError("Either filename or store_to_xcom_key can be set")
+
         self.bucket = bucket
         self.object = object
         self.filename = filename
@@ -78,14 +88,17 @@ class GoogleCloudStorageDownloadOperator(BaseOperator):
             google_cloud_storage_conn_id=self.google_cloud_storage_conn_id,
             delegate_to=self.delegate_to
         )
-        file_bytes = hook.download(bucket=self.bucket,
-                                   object=self.object,
-                                   filename=self.filename)
+
         if self.store_to_xcom_key:
-            if sys.getsizeof(file_bytes) < 48000:
+            file_bytes = hook.download(bucket=self.bucket,
+                                       object=self.object)
+            if sys.getsizeof(file_bytes) < MAX_XCOM_SIZE:
                 context['ti'].xcom_push(key=self.store_to_xcom_key, value=file_bytes)
             else:
                 raise RuntimeError(
                     'The size of the downloaded file is too large to push to XCom!'
                 )
-        self.log.debug(file_bytes)
+        else:
+            hook.download(bucket=self.bucket,
+                          object=self.object,
+                          filename=self.filename)

@@ -19,20 +19,21 @@
 
 import unittest
 
-from airflow import configuration
 from airflow.contrib.hooks.cassandra_hook import CassandraHook
+import pytest
 from cassandra.cluster import Cluster
 from cassandra.policies import (
     TokenAwarePolicy, RoundRobinPolicy, DCAwareRoundRobinPolicy, WhiteListRoundRobinPolicy
 )
-from airflow.models.connection import Connection
+
+from airflow.models import Connection
 from airflow.utils import db
 from tests.compat import mock, patch
 
 
-class CassandraHookTest(unittest.TestCase):
+@pytest.mark.integration("cassandra")
+class TestCassandraHook(unittest.TestCase):
     def setUp(self):
-        configuration.load_test_config()
         db.merge_conn(
             Connection(
                 conn_id='cassandra_test', conn_type='cassandra',
@@ -72,13 +73,14 @@ class CassandraHookTest(unittest.TestCase):
             self.assertEqual(cluster.port, 9042)
             self.assertTrue(isinstance(cluster.load_balancing_policy, TokenAwarePolicy))
 
-    def test_get_lb_policy(self):
+    def test_get_lb_policy_with_no_args(self):
         # test LB policies with no args
         self._assert_get_lb_policy('RoundRobinPolicy', {}, RoundRobinPolicy)
         self._assert_get_lb_policy('DCAwareRoundRobinPolicy', {}, DCAwareRoundRobinPolicy)
         self._assert_get_lb_policy('TokenAwarePolicy', {}, TokenAwarePolicy,
                                    expected_child_policy_type=RoundRobinPolicy)
 
+    def test_get_lb_policy_with_args(self):
         # test DCAwareRoundRobinPolicy with args
         self._assert_get_lb_policy('DCAwareRoundRobinPolicy',
                                    {'local_dc': 'foo', 'used_hosts_per_remote_dc': '3'},
@@ -99,6 +101,7 @@ class CassandraHookTest(unittest.TestCase):
                                        TokenAwarePolicy,
                                        expected_child_policy_type=WhiteListRoundRobinPolicy)  # noqa
 
+    def test_get_lb_policy_invalid_policy(self):
         # test invalid policy name should default to RoundRobinPolicy
         self._assert_get_lb_policy('DoesNotExistPolicy', {}, RoundRobinPolicy)
 
@@ -110,6 +113,7 @@ class CassandraHookTest(unittest.TestCase):
                                    TokenAwarePolicy,
                                    expected_child_policy_type=RoundRobinPolicy)
 
+    def test_get_lb_policy_no_host_for_white_list(self):
         # test host not specified for WhiteListRoundRobinPolicy should throw exception
         self._assert_get_lb_policy('WhiteListRoundRobinPolicy',
                                    {},

@@ -20,6 +20,7 @@
 from future import standard_library  # noqa
 standard_library.install_aliases()  # noqa
 
+import functools
 import inspect
 import json
 import time
@@ -40,14 +41,14 @@ import flask_appbuilder.models.sqla.filters as fab_sqlafilters
 import sqlalchemy as sqla
 from six.moves.urllib.parse import urlencode
 
-from airflow import configuration
+from airflow.configuration import conf
 from airflow.models import BaseOperator
 from airflow.operators.subdag_operator import SubDagOperator
 from airflow.utils import timezone
 from airflow.utils.json import AirflowJsonEncoder
 from airflow.utils.state import State
 
-AUTHENTICATE = configuration.getboolean('webserver', 'AUTHENTICATE')
+AUTHENTICATE = conf.getboolean('webserver', 'AUTHENTICATE')
 
 DEFAULT_SENSITIVE_VARIABLE_FIELDS = (
     'password',
@@ -63,19 +64,32 @@ DEFAULT_SENSITIVE_VARIABLE_FIELDS = (
 def should_hide_value_for_key(key_name):
     # It is possible via importing variables from file that a key is empty.
     if key_name:
-        config_set = configuration.conf.getboolean('admin',
-                                                   'hide_sensitive_variable_fields')
+        config_set = conf.getboolean('admin',
+                                     'hide_sensitive_variable_fields')
         field_comp = any(s in key_name.lower() for s in DEFAULT_SENSITIVE_VARIABLE_FIELDS)
         return config_set and field_comp
     return False
 
 
 def get_params(**kwargs):
+    hide_paused_dags_by_default = conf.getboolean('webserver',
+                                                  'hide_paused_dags_by_default')
     if 'showPaused' in kwargs:
-        v = kwargs['showPaused']
-        if v or v is None:
+        show_paused_dags_url_param = kwargs['showPaused']
+        if _should_remove_show_paused_from_url_params(
+            show_paused_dags_url_param,
+            hide_paused_dags_by_default
+        ):
             kwargs.pop('showPaused')
     return urlencode({d: v if v is not None else '' for d, v in kwargs.items()})
+
+
+def _should_remove_show_paused_from_url_params(show_paused_dags_url_param,
+                                               hide_paused_dags_by_default):
+    return any([
+        show_paused_dags_url_param != hide_paused_dags_by_default,
+        show_paused_dags_url_param is None
+    ])
 
 
 def generate_pages(current_page, num_of_pages,
@@ -111,11 +125,11 @@ def generate_pages(current_page, num_of_pages,
 </li>""")
 
     previous_node = Markup("""<li class="paginate_button previous {disabled}" id="dags_previous">
-    <a href="{href_link}" aria-controls="dags" data-dt-idx="0" tabindex="0">&lt;</a>
+    <a href="{href_link}" aria-controls="dags" data-dt-idx="0" tabindex="0">&lsaquo;</a>
 </li>""")
 
     next_node = Markup("""<li class="paginate_button next {disabled}" id="dags_next">
-    <a href="{href_link}" aria-controls="dags" data-dt-idx="3" tabindex="0">&gt;</a>
+    <a href="{href_link}" aria-controls="dags" data-dt-idx="3" tabindex="0">&rsaquo;</a>
 </li>""")
 
     last_node = Markup("""<li class="paginate_button {disabled}" id="dags_last">
@@ -203,6 +217,9 @@ def json_response(obj):
         mimetype="application/json")
 
 
+ZIP_REGEX = re.compile(r'((.*\.zip){})?(.*)'.format(re.escape(os.sep)))
+
+
 def open_maybe_zipped(f, mode='r'):
     """
     Opens the given file. If the path contains a folder with a .zip suffix, then
@@ -211,8 +228,7 @@ def open_maybe_zipped(f, mode='r'):
     :return: a file object, as in `open`, or as in `ZipFile.open`.
     """
 
-    _, archive, filename = re.search(
-        r'((.*\.zip){})?(.*)'.format(re.escape(os.sep)), f).groups()
+    _, archive, filename = ZIP_REGEX.search(f).groups()
     if archive and zipfile.is_zipfile(archive):
         return zipfile.ZipFile(archive, mode=mode).open(filename)
     else:
@@ -251,14 +267,14 @@ def task_instance_link(attr):
             aria-hidden="true"></span>
         </a>
         </span>
-        """).format(**locals())
+        """).format(url=url, task_id=task_id, url_root=url_root)
 
 
 def state_token(state):
     color = State.color(state)
     return Markup(
         '<span class="label" style="background-color:{color};">'
-        '{state}</span>').format(**locals())
+        '{state}</span>').format(color=color, state=state)
 
 
 def state_f(attr):
@@ -304,7 +320,7 @@ def dag_run_link(attr):
         run_id=run_id,
         execution_date=execution_date)
     return Markup(
-        '<a href="{url}">{run_id}</a>').format(**locals())
+        '<a href="{url}">{run_id}</a>').format(url=url, run_id=run_id)
 
 
 def pygment_html_render(s, lexer=lexers.TextLexer):
@@ -344,8 +360,7 @@ def get_attr_renderer():
         'doc_rst': lambda x: render(x, lexers.RstLexer),
         'doc_yaml': lambda x: render(x, lexers.YamlLexer),
         'doc_md': wrapped_markdown,
-        'python_callable': lambda x: render(
-            inspect.getsource(x), lexers.PythonLexer),
+        'python_callable': lambda x: render(get_python_source(x), lexers.PythonLexer),
     }
     return attr_renderer
 
@@ -375,6 +390,39 @@ def get_chart_height(dag):
     charts, that is charts that take up space based on the size of the components within.
     """
     return 600 + len(dag.tasks) * 10
+
+
+def get_python_source(x, return_none_if_x_none=False):
+    """
+    Helper function to get Python source (or not), preventing exceptions
+    """
+    if isinstance(x, str):
+        return x
+
+    if x is None and return_none_if_x_none:
+        return None
+
+    source_code = None
+
+    if isinstance(x, functools.partial):
+        source_code = inspect.getsource(x.func)
+
+    if source_code is None:
+        try:
+            source_code = inspect.getsource(x)
+        except TypeError:
+            pass
+
+    if source_code is None:
+        try:
+            source_code = inspect.getsource(x.__call__)
+        except (TypeError, AttributeError):
+            pass
+
+    if source_code is None:
+        source_code = 'No source code available for {}'.format(type(x))
+
+    return source_code
 
 
 class UtcAwareFilterMixin(object):
@@ -433,9 +481,12 @@ class CustomSQLAInterface(SQLAInterface):
 
     def is_utcdatetime(self, col_name):
         from airflow.utils.sqlalchemy import UtcDateTime
-        obj = self.list_columns[col_name].type
-        return isinstance(obj, UtcDateTime) or \
-            isinstance(obj, sqla.types.TypeDecorator) and \
-            isinstance(obj.impl, UtcDateTime)
+
+        if col_name in self.list_columns:
+            obj = self.list_columns[col_name].type
+            return isinstance(obj, UtcDateTime) or \
+                isinstance(obj, sqla.types.TypeDecorator) and \
+                isinstance(obj.impl, UtcDateTime)
+        return False
 
     filter_converter_class = UtcAwareFilterConverter

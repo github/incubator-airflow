@@ -18,17 +18,17 @@
 # under the License.
 from __future__ import print_function
 
-import airflow
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
+from airflow.utils.dates import days_ago
 
 args = {
-    'owner': 'airflow',
-    'start_date': airflow.utils.dates.days_ago(2),
+    'owner': 'Airflow',
+    'start_date': days_ago(2),
     'provide_context': True,
 }
 
-dag = DAG('example_xcom', schedule_interval="@once", default_args=args)
+dag = DAG('example_xcom', schedule_interval="@once", default_args=args, tags=['example'])
 
 value_1 = [1, 2, 3]
 value_2 = {'a': 'b'}

@@ -23,11 +23,11 @@ from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import ShortCircuitOperator
 
 args = {
-    'owner': 'airflow',
+    'owner': 'Airflow',
     'start_date': airflow.utils.dates.days_ago(2),
 }
 
-dag = DAG(dag_id='example_short_circuit_operator', default_args=args)
+dag = DAG(dag_id='example_short_circuit_operator', default_args=args, tags=['example'])
 
 cond_true = ShortCircuitOperator(
     task_id='condition_is_True',

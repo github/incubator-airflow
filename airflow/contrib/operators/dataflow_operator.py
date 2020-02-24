@@ -20,6 +20,7 @@ import os
 import re
 import uuid
 import copy
+import tempfile
 
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook
 from airflow.contrib.hooks.gcp_dataflow_hook import DataFlowHook
@@ -36,7 +37,7 @@ class DataFlowJavaOperator(BaseOperator):
     **Example**: ::
 
         default_args = {
-            'owner': 'airflow',
+            'owner': 'Airflow',
             'depends_on_past': False,
             'start_date':
                 (2016, 8, 1),
@@ -125,7 +126,7 @@ class DataFlowJavaOperator(BaseOperator):
     .. code-block:: python
 
        t1 = DataFlowJavaOperator(
-           task_id='datapflow_example',
+           task_id='dataflow_example',
            jar='{{var.value.gcp_dataflow_base}}pipeline/build/libs/pipeline-example-1.0.jar',
            options={
                'autoscalingAlgorithm': 'BASIC',
@@ -235,7 +236,7 @@ class DataflowTemplateOperator(BaseOperator):
     .. code-block:: python
 
        t1 = DataflowTemplateOperator(
-           task_id='datapflow_example',
+           task_id='dataflow_example',
            template='{{var.value.gcp_dataflow_base}}',
            parameters={
                'inputFile': "gs://bucket/input/my_input.txt",
@@ -307,7 +308,7 @@ class DataFlowPythonOperator(BaseOperator):
         https://cloud.google.com/dataflow/pipelines/specifying-exec-params
 
     :param py_file: Reference to the python dataflow pipeline file.py, e.g.,
-        /some/local/file/path/to/your/python/pipeline/file.
+        /some/local/file/path/to/your/python/pipeline/file. (templated)
     :type py_file: str
     :param job_name: The 'job_name' to use when executing the DataFlow job
         (templated). This ends up being set in the pipeline options, so any entry
@@ -331,7 +332,7 @@ class DataFlowPythonOperator(BaseOperator):
         JOB_STATE_RUNNING state.
     :type poll_sleep: int
     """
-    template_fields = ['options', 'dataflow_default_options', 'job_name']
+    template_fields = ['options', 'dataflow_default_options', 'job_name', 'py_file']
 
     @apply_defaults
     def __init__(
@@ -414,8 +415,10 @@ class GoogleCloudBucketHelper(object):
 
         bucket_id = path_components[0]
         object_id = '/'.join(path_components[1:])
-        local_file = '/tmp/dataflow{}-{}'.format(str(uuid.uuid4())[:8],
-                                                 path_components[-1])
+        local_file = os.path.join(
+            tempfile.gettempdir(),
+            'dataflow{}-{}'.format(str(uuid.uuid4())[:8], path_components[-1])
+        )
         self._gcs_hook.download(bucket_id, object_id, local_file)
 
         if os.stat(local_file).st_size > 0:

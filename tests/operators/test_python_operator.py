@@ -22,10 +22,14 @@ from __future__ import print_function, unicode_literals
 import copy
 import logging
 import os
+
 import unittest
+
+from tests.compat import mock
+
+from collections import namedtuple
 from datetime import timedelta, date
 
-from airflow import configuration
 from airflow.exceptions import AirflowException
 from airflow.models import TaskInstance as TI, DAG, DagRun
 from airflow.operators.dummy_operator import DummyOperator
@@ -33,6 +37,7 @@ from airflow.operators.python_operator import PythonOperator, BranchPythonOperat
 from airflow.operators.python_operator import ShortCircuitOperator
 from airflow.settings import Session
 from airflow.utils import timezone
+from airflow.utils.db import create_session
 from airflow.utils.state import State
 
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
@@ -64,10 +69,62 @@ def build_recording_function(calls_collection):
     return recording_function
 
 
-class PythonOperatorTest(unittest.TestCase):
+class TestPythonBase(unittest.TestCase):
+    """Base test class for TestPythonOperator and TestPythonSensor classes"""
     @classmethod
     def setUpClass(cls):
-        super(PythonOperatorTest, cls).setUpClass()
+        super(TestPythonBase, cls).setUpClass()
+
+        with create_session() as session:
+            session.query(DagRun).delete()
+            session.query(TI).delete()
+
+    def setUp(self):
+        super(TestPythonBase, self).setUp()
+        self.dag = DAG(
+            'test_dag',
+            default_args={
+                'owner': 'airflow',
+                'start_date': DEFAULT_DATE})
+        self.addCleanup(self.dag.clear)
+        self.clear_run()
+        self.addCleanup(self.clear_run)
+
+    def tearDown(self):
+        super(TestPythonBase, self).tearDown()
+
+        with create_session() as session:
+            session.query(DagRun).delete()
+            session.query(TI).delete()
+
+    def clear_run(self):
+        self.run = False
+
+    def _assert_calls_equal(self, first, second):
+        self.assertIsInstance(first, Call)
+        self.assertIsInstance(second, Call)
+        self.assertTupleEqual(first.args, second.args)
+        # eliminate context (conf, dag_run, task_instance, etc.)
+        test_args = ["an_int", "a_date", "a_templated_string"]
+        first.kwargs = {
+            key: value
+            for (key, value) in first.kwargs.items()
+            if key in test_args
+        }
+        second.kwargs = {
+            key: value
+            for (key, value) in second.kwargs.items()
+            if key in test_args
+        }
+        self.assertDictEqual(first.kwargs, second.kwargs)
+
+
+@mock.patch.dict('os.environ', {})
+class TestPythonOperator(TestPythonBase):
+
+    @classmethod
+    def setUpClass(cls):
+        super(TestPythonOperator, cls).setUpClass()
 
         session = Session()
 
@@ -77,20 +134,29 @@ class PythonOperatorTest(unittest.TestCase):
         session.close()
 
     def setUp(self):
-        super(PythonOperatorTest, self).setUp()
-        configuration.load_test_config()
+        super(TestPythonOperator, self).setUp()
+
+        def del_env(key):
+            try:
+                del os.environ[key]
+            except KeyError:
+                pass
+
+        del_env('AIRFLOW_CTX_DAG_ID')
+        del_env('AIRFLOW_CTX_TASK_ID')
+        del_env('AIRFLOW_CTX_EXECUTION_DATE')
+        del_env('AIRFLOW_CTX_DAG_RUN_ID')
         self.dag = DAG(
             'test_dag',
             default_args={
                 'owner': 'airflow',
-                'start_date': DEFAULT_DATE},
-            schedule_interval=INTERVAL)
+                'start_date': DEFAULT_DATE})
         self.addCleanup(self.dag.clear)
         self.clear_run()
         self.addCleanup(self.clear_run)
 
     def tearDown(self):
-        super(PythonOperatorTest, self).tearDown()
+        super(TestPythonOperator, self).tearDown()
 
         session = Session()
 
@@ -104,11 +170,29 @@ class PythonOperatorTest(unittest.TestCase):
             if var in os.environ:
                 del os.environ[var]
 
-    def do_run(self):
-        self.run = True
-
     def clear_run(self):
         self.run = False
+
+    def _assert_calls_equal(self, first, second):
+        self.assertIsInstance(first, Call)
+        self.assertIsInstance(second, Call)
+        self.assertTupleEqual(first.args, second.args)
+        # eliminate context (conf, dag_run, task_instance, etc.)
+        test_args = ["an_int", "a_date", "a_templated_string"]
+        first.kwargs = {
+            key: value
+            for (key, value) in first.kwargs.items()
+            if key in test_args
+        }
+        second.kwargs = {
+            key: value
+            for (key, value) in second.kwargs.items()
+            if key in test_args
+        }
+        self.assertDictEqual(first.kwargs, second.kwargs)
+
+    def do_run(self):
+        self.run = True
 
     def is_run(self):
         return self.run
@@ -139,15 +223,14 @@ class PythonOperatorTest(unittest.TestCase):
                 task_id='python_operator',
                 dag=self.dag)
 
-    def _assertCallsEqual(self, first, second):
-        self.assertIsInstance(first, Call)
-        self.assertIsInstance(second, Call)
-        self.assertTupleEqual(first.args, second.args)
-        self.assertDictEqual(first.kwargs, second.kwargs)
-
     def test_python_callable_arguments_are_templatized(self):
         """Test PythonOperator op_args are templatized"""
         recorded_calls = []
+
+        # Create a named tuple and ensure it is still preserved
+        # after the rendering is done
+        Named = namedtuple('Named', ['var1', 'var2'])
+        named_tuple = Named('{{ ds }}', 'unchanged')
 
         task = PythonOperator(
             task_id='python_operator',
@@ -157,7 +240,8 @@ class PythonOperatorTest(unittest.TestCase):
             op_args=[
                 4,
                 date(2019, 1, 1),
-                "dag {{dag.dag_id}} ran on {{ds}}."
+                "dag {{dag.dag_id}} ran on {{ds}}.",
+                named_tuple
             ],
             dag=self.dag)
 
@@ -169,12 +253,14 @@ class PythonOperatorTest(unittest.TestCase):
         )
         task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
+        ds_templated = DEFAULT_DATE.date().isoformat()
         self.assertEqual(1, len(recorded_calls))
-        self._assertCallsEqual(
+        self._assert_calls_equal(
             recorded_calls[0],
             Call(4,
                  date(2019, 1, 1),
-                 "dag {} ran on {}.".format(self.dag.dag_id, DEFAULT_DATE.date().isoformat()))
+                 "dag {} ran on {}.".format(self.dag.dag_id, ds_templated),
+                 Named(ds_templated, 'unchanged'))
         )
 
     def test_python_callable_keyword_arguments_are_templatized(self):
@@ -202,7 +288,7 @@ class PythonOperatorTest(unittest.TestCase):
         task.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
         self.assertEqual(1, len(recorded_calls))
-        self._assertCallsEqual(
+        self._assert_calls_equal(
             recorded_calls[0],
             Call(an_int=4,
                  a_date=date(2019, 1, 1),

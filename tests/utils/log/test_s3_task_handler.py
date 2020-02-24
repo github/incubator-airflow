@@ -21,7 +21,6 @@ import mock
 import unittest
 import os
 
-from airflow import configuration
 from airflow.utils.log.s3_task_handler import S3TaskHandler
 from airflow.utils.state import State
 from airflow.utils.timezone import datetime
@@ -55,7 +54,6 @@ class TestS3TaskHandler(unittest.TestCase):
             self.filename_template
         )
 
-        configuration.load_test_config()
         date = datetime(2016, 1, 1)
         self.dag = DAG('dag_for_testing_file_task_handler', start_date=date)
         task = DummyOperator(task_id='task_for_testing_file_log_handler', dag=self.dag)
@@ -108,6 +106,24 @@ class TestS3TaskHandler(unittest.TestCase):
         with mock.patch("airflow.hooks.S3_hook.S3Hook") as mock_hook:
             mock_hook.side_effect = Exception('Failed to connect')
             self.assertFalse(self.s3_task_handler.s3_log_exists(self.remote_log_location))
+
+    def test_set_context_raw(self):
+        self.ti.raw = True
+        mock_open = mock.mock_open()
+        with mock.patch('airflow.utils.log.s3_task_handler.open', mock_open):
+            self.s3_task_handler.set_context(self.ti)
+
+        self.assertFalse(self.s3_task_handler.upload_on_close)
+        mock_open.assert_not_called()
+
+    def test_set_context_not_raw(self):
+        mock_open = mock.mock_open()
+        with mock.patch('airflow.utils.log.s3_task_handler.open', mock_open):
+            self.s3_task_handler.set_context(self.ti)
+
+        self.assertTrue(self.s3_task_handler.upload_on_close)
+        mock_open.assert_called_once_with(os.path.abspath('local/log/location/1.log'), 'w')
+        mock_open().write.assert_not_called()
 
     def test_read(self):
         self.conn.put_object(Bucket='bucket', Key=self.remote_log_key, Body=b'Log line\n')

@@ -18,18 +18,12 @@
 from airflow.contrib.kubernetes.kubernetes_request_factory.\
     pod_request_factory import SimplePodRequestFactory, \
     ExtractXcomPodRequestFactory
-from airflow.contrib.kubernetes.pod import Pod
+from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.exceptions import AirflowConfigException
 import unittest
 
-XCOM_CMD = """import time
-while True:
-    try:
-        time.sleep(3600)
-    except KeyboardInterrupt:
-        exit(0)
-"""
+XCOM_CMD = 'trap "exit 0" INT; while true; do sleep 30; done;'
 
 
 class TestPodRequestFactory(unittest.TestCase):
@@ -48,6 +42,8 @@ class TestPodRequestFactory(unittest.TestCase):
             labels={'app': 'myapp'},
             image_pull_secrets='pull_secret_a,pull_secret_b',
             configmaps=['configmap_a', 'configmap_b'],
+            ports=[{'name': 'foo', 'containerPort': 1234}],
+            resources=Resources('1Gi', 1, '2Gi', 2, 1),
             secrets=[
                 # This should be a secretRef
                 Secret('env', None, 'secret_a'),
@@ -106,6 +102,18 @@ class TestPodRequestFactory(unittest.TestCase):
                             'name': 'configmap_b'
                         }
                     }],
+                    'resources': {
+                        'requests': {
+                            'memory': '1Gi',
+                            'cpu': 1
+                        },
+                        'limits': {
+                            'memory': '2Gi',
+                            'cpu': 2,
+                            'nvidia.com/gpu': 1
+                        },
+                    },
+                    'ports': [{'name': 'foo', 'containerPort': 1234}],
                     'volumeMounts': [{
                         'mountPath': '/etc/foo',
                         'name': 'secretvol0',
@@ -146,14 +154,15 @@ class TestPodRequestFactory(unittest.TestCase):
         result = self.xcom_pod_request_factory.create(self.pod)
         container_two = {
             'name': 'airflow-xcom-sidecar',
-            'image': 'python:3.5-alpine',
-            'command': ['python', '-c', XCOM_CMD],
+            'image': 'alpine',
+            'command': ['sh', '-c', XCOM_CMD],
             'volumeMounts': [
                 {
                     'name': 'xcom',
                     'mountPath': '/airflow/xcom'
                 }
-            ]
+            ],
+            'resources': {'requests': {'cpu': '1m'}},
         }
         self.expected['spec']['containers'].append(container_two)
         self.expected['spec']['containers'][0]['volumeMounts'].insert(0, {

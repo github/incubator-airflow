@@ -16,15 +16,60 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""
+This module contains Google BigQuery operators.
+"""
 
 import json
+from typing import Iterable, FrozenSet, Optional
 
 from airflow.contrib.hooks.bigquery_hook import BigQueryHook
 from airflow.contrib.hooks.gcs_hook import GoogleCloudStorageHook, _parse_gcs_url
-from airflow.models import BaseOperator
+from airflow.exceptions import AirflowException
+from airflow.models.baseoperator import BaseOperator, BaseOperatorLink
+from airflow.models.taskinstance import TaskInstance
 from airflow.utils.decorators import apply_defaults
 
+BIGQUERY_JOB_DETAILS_LINK_FMT = 'https://console.cloud.google.com/bigquery?j={job_id}'
 
+
+class BigQueryConsoleLink(BaseOperatorLink):
+    """
+    Helper class for constructing BigQuery link.
+    """
+    name = 'BigQuery Console'
+
+    def get_link(self, operator, dttm):
+        ti = TaskInstance(task=operator, execution_date=dttm)
+        job_id = ti.xcom_pull(task_ids=operator.task_id, key='job_id')
+        return BIGQUERY_JOB_DETAILS_LINK_FMT.format(job_id=job_id) if job_id else ''
+
+
+class BigQueryConsoleIndexableLink(BaseOperatorLink):
+    """
+    Helper class for constructing BigQuery link.
+    """
+
+    def __init__(self, index):
+        super(BigQueryConsoleIndexableLink, self).__init__()
+        self.index = index
+
+    @property
+    def name(self):  # type: () -> str
+        return 'BigQuery Console #{index}'.format(index=self.index + 1)
+
+    def get_link(self, operator, dttm):
+        ti = TaskInstance(task=operator, execution_date=dttm)
+        job_ids = ti.xcom_pull(task_ids=operator.task_id, key='job_id')
+        if not job_ids:
+            return None
+        if len(job_ids) < self.index:
+            return None
+        job_id = job_ids[self.index]
+        return BIGQUERY_JOB_DETAILS_LINK_FMT.format(job_id=job_id)
+
+
+# pylint: disable=too-many-instance-attributes
 class BigQueryOperator(BaseOperator):
     """
     Executes BigQuery SQL queries in a specific BigQuery database
@@ -84,7 +129,7 @@ class BigQueryOperator(BaseOperator):
     :type api_resource_configs: dict
     :param schema_update_options: Allows the schema of the destination
         table to be updated as a side effect of the load job.
-    :type schema_update_options: tuple
+    :type schema_update_options: Optional[Union[list, tuple, set]]
     :param query_params: a list of dictionary containing query parameter types and
         values, passed to BigQuery. The structure of dictionary should look like
         'queryParameters' in Google BigQuery Jobs API:
@@ -110,12 +155,36 @@ class BigQueryOperator(BaseOperator):
         US and EU. See details at
         https://cloud.google.com/bigquery/docs/locations#specifying_your_location
     :type location: str
+    :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+        **Example**: ::
+
+            encryption_configuration = {
+                "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+            }
+    :type encryption_configuration: dict
     """
 
     template_fields = ('bql', 'sql', 'destination_dataset_table', 'labels')
     template_ext = ('.sql', )
     ui_color = '#e4f0e8'
 
+    # The _serialized_fields are lazily loaded when get_serialized_fields() method is called
+    __serialized_fields = None  # type: Optional[FrozenSet[str]]
+
+    @property
+    def operator_extra_links(self):
+        """
+        Return operator extra links
+        """
+        if isinstance(self.sql, str):
+            return (
+                BigQueryConsoleLink(),
+            )
+        return (
+            BigQueryConsoleIndexableLink(i) for i, _ in enumerate(self.sql)
+        )
+
+    # pylint: disable=too-many-arguments, too-many-locals
     @apply_defaults
     def __init__(self,
                  bql=None,
@@ -139,6 +208,7 @@ class BigQueryOperator(BaseOperator):
                  api_resource_configs=None,
                  cluster_fields=None,
                  location=None,
+                 encryption_configuration=None,
                  *args,
                  **kwargs):
         super(BigQueryOperator, self).__init__(*args, **kwargs)
@@ -164,6 +234,7 @@ class BigQueryOperator(BaseOperator):
         self.api_resource_configs = api_resource_configs
         self.cluster_fields = cluster_fields
         self.location = location
+        self.encryption_configuration = encryption_configuration
 
         # TODO remove `bql` in Airflow 2.0
         if self.bql:
@@ -190,30 +261,65 @@ class BigQueryOperator(BaseOperator):
             )
             conn = hook.get_conn()
             self.bq_cursor = conn.cursor()
-        self.bq_cursor.run_query(
-            sql=self.sql,
-            destination_dataset_table=self.destination_dataset_table,
-            write_disposition=self.write_disposition,
-            allow_large_results=self.allow_large_results,
-            flatten_results=self.flatten_results,
-            udf_config=self.udf_config,
-            maximum_billing_tier=self.maximum_billing_tier,
-            maximum_bytes_billed=self.maximum_bytes_billed,
-            create_disposition=self.create_disposition,
-            query_params=self.query_params,
-            labels=self.labels,
-            schema_update_options=self.schema_update_options,
-            priority=self.priority,
-            time_partitioning=self.time_partitioning,
-            api_resource_configs=self.api_resource_configs,
-            cluster_fields=self.cluster_fields,
-        )
+        if isinstance(self.sql, str):
+            job_id = self.bq_cursor.run_query(
+                sql=self.sql,
+                destination_dataset_table=self.destination_dataset_table,
+                write_disposition=self.write_disposition,
+                allow_large_results=self.allow_large_results,
+                flatten_results=self.flatten_results,
+                udf_config=self.udf_config,
+                maximum_billing_tier=self.maximum_billing_tier,
+                maximum_bytes_billed=self.maximum_bytes_billed,
+                create_disposition=self.create_disposition,
+                query_params=self.query_params,
+                labels=self.labels,
+                schema_update_options=self.schema_update_options,
+                priority=self.priority,
+                time_partitioning=self.time_partitioning,
+                api_resource_configs=self.api_resource_configs,
+                cluster_fields=self.cluster_fields,
+                encryption_configuration=self.encryption_configuration
+            )
+        elif isinstance(self.sql, Iterable):
+            job_id = [
+                self.bq_cursor.run_query(
+                    sql=s,
+                    destination_dataset_table=self.destination_dataset_table,
+                    write_disposition=self.write_disposition,
+                    allow_large_results=self.allow_large_results,
+                    flatten_results=self.flatten_results,
+                    udf_config=self.udf_config,
+                    maximum_billing_tier=self.maximum_billing_tier,
+                    maximum_bytes_billed=self.maximum_bytes_billed,
+                    create_disposition=self.create_disposition,
+                    query_params=self.query_params,
+                    labels=self.labels,
+                    schema_update_options=self.schema_update_options,
+                    priority=self.priority,
+                    time_partitioning=self.time_partitioning,
+                    api_resource_configs=self.api_resource_configs,
+                    cluster_fields=self.cluster_fields,
+                    encryption_configuration=self.encryption_configuration
+                )
+                for s in self.sql]
+        else:
+            raise AirflowException(
+                "argument 'sql' of type {} is neither a string nor an iterable".format(type(str)))
+        context['task_instance'].xcom_push(key='job_id', value=job_id)
 
     def on_kill(self):
         super(BigQueryOperator, self).on_kill()
         if self.bq_cursor is not None:
             self.log.info('Cancelling running query')
             self.bq_cursor.cancel_query()
+
+    @classmethod
+    def get_serialized_fields(cls):
+        """Serialized BigQueryOperator contain exactly these fields."""
+        if not cls.__serialized_fields:
+            cls.__serialized_fields = frozenset(BaseOperator.get_serialized_fields() | {"sql"})
+        return cls.__serialized_fields
 
 
 class BigQueryCreateEmptyTableOperator(BaseOperator):
@@ -303,12 +409,19 @@ class BigQueryCreateEmptyTableOperator(BaseOperator):
                 google_cloud_storage_conn_id='airflow-service-account'
             )
     :type labels: dict
+    :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+        **Example**: ::
 
+            encryption_configuration = {
+                "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+            }
+    :type encryption_configuration: dict
     """
     template_fields = ('dataset_id', 'table_id', 'project_id',
                        'gcs_schema_object', 'labels')
     ui_color = '#f0eee4'
 
+    # pylint: disable=too-many-arguments
     @apply_defaults
     def __init__(self,
                  dataset_id,
@@ -321,6 +434,7 @@ class BigQueryCreateEmptyTableOperator(BaseOperator):
                  google_cloud_storage_conn_id='google_cloud_default',
                  delegate_to=None,
                  labels=None,
+                 encryption_configuration=None,
                  *args, **kwargs):
 
         super(BigQueryCreateEmptyTableOperator, self).__init__(*args, **kwargs)
@@ -335,6 +449,7 @@ class BigQueryCreateEmptyTableOperator(BaseOperator):
         self.delegate_to = delegate_to
         self.time_partitioning = {} if time_partitioning is None else time_partitioning
         self.labels = labels
+        self.encryption_configuration = encryption_configuration
 
     def execute(self, context):
         bq_hook = BigQueryHook(bigquery_conn_id=self.bigquery_conn_id,
@@ -362,10 +477,12 @@ class BigQueryCreateEmptyTableOperator(BaseOperator):
             table_id=self.table_id,
             schema_fields=schema_fields,
             time_partitioning=self.time_partitioning,
-            labels=self.labels
+            labels=self.labels,
+            encryption_configuration=self.encryption_configuration
         )
 
 
+# pylint: disable=too-many-instance-attributes
 class BigQueryCreateExternalTableOperator(BaseOperator):
     """
     Creates a new external table in the dataset with the data in Google Cloud
@@ -437,11 +554,19 @@ class BigQueryCreateExternalTableOperator(BaseOperator):
     :type src_fmt_configs: dict
     :param labels: a dictionary containing labels for the table, passed to BigQuery
     :type labels: dict
+    :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
+        **Example**: ::
+
+            encryption_configuration = {
+                "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
+            }
+    :type encryption_configuration: dict
     """
     template_fields = ('bucket', 'source_objects',
                        'schema_object', 'destination_project_dataset_table', 'labels')
     ui_color = '#f0eee4'
 
+    # pylint: disable=too-many-arguments
     @apply_defaults
     def __init__(self,
                  bucket,
@@ -460,8 +585,9 @@ class BigQueryCreateExternalTableOperator(BaseOperator):
                  bigquery_conn_id='bigquery_default',
                  google_cloud_storage_conn_id='google_cloud_default',
                  delegate_to=None,
-                 src_fmt_configs={},
+                 src_fmt_configs=None,
                  labels=None,
+                 encryption_configuration=None,
                  *args, **kwargs):
 
         super(BigQueryCreateExternalTableOperator, self).__init__(*args, **kwargs)
@@ -487,8 +613,9 @@ class BigQueryCreateExternalTableOperator(BaseOperator):
         self.google_cloud_storage_conn_id = google_cloud_storage_conn_id
         self.delegate_to = delegate_to
 
-        self.src_fmt_configs = src_fmt_configs
+        self.src_fmt_configs = src_fmt_configs if src_fmt_configs is not None else dict()
         self.labels = labels
+        self.encryption_configuration = encryption_configuration
 
     def execute(self, context):
         bq_hook = BigQueryHook(bigquery_conn_id=self.bigquery_conn_id,
@@ -523,7 +650,8 @@ class BigQueryCreateExternalTableOperator(BaseOperator):
             allow_quoted_newlines=self.allow_quoted_newlines,
             allow_jagged_rows=self.allow_jagged_rows,
             src_fmt_configs=self.src_fmt_configs,
-            labels=self.labels
+            labels=self.labels,
+            encryption_configuration=self.encryption_configuration
         )
 
 
@@ -536,14 +664,23 @@ class BigQueryDeleteDatasetOperator(BaseOperator):
     :type project_id: str
     :param dataset_id: The dataset to be deleted.
     :type dataset_id: str
+    :param delete_contents: (Optional) Whether to force the deletion even if the dataset is not empty.
+        Will delete all tables (if any) in the dataset if set to True.
+        Will raise HttpError 400: "{dataset_id} is still in use" if set to False and dataset is not empty.
+        The default value is False.
+    :type delete_contents: bool
+    :param bigquery_conn_id: The connection ID used to connect to Google Cloud Platform.
+    :type bigquery_conn_id: str
 
     **Example**: ::
 
-        delete_temp_data = BigQueryDeleteDatasetOperator(dataset_id = 'temp-dataset',
-                                                         project_id = 'temp-project',
-                                                         bigquery_conn_id='_my_gcp_conn_',
-                                                         task_id='Deletetemp',
-                                                         dag=dag)
+        delete_temp_data = BigQueryDeleteDatasetOperator(
+            dataset_id='temp-dataset',
+            project_id='temp-project',
+            delete_contents=True, # Force the deletion of the dataset as well as its tables (if any).
+            bigquery_conn_id='_my_gcp_conn_',
+            task_id='Deletetemp',
+            dag=dag)
     """
 
     template_fields = ('dataset_id', 'project_id')
@@ -552,6 +689,7 @@ class BigQueryDeleteDatasetOperator(BaseOperator):
     @apply_defaults
     def __init__(self,
                  dataset_id,
+                 delete_contents=False,
                  project_id=None,
                  bigquery_conn_id='bigquery_default',
                  delegate_to=None,
@@ -559,14 +697,14 @@ class BigQueryDeleteDatasetOperator(BaseOperator):
         self.dataset_id = dataset_id
         self.project_id = project_id
         self.bigquery_conn_id = bigquery_conn_id
+        self.delete_contents = delete_contents
         self.delegate_to = delegate_to
-
-        self.log.info('Dataset id: %s', self.dataset_id)
-        self.log.info('Project id: %s', self.project_id)
 
         super(BigQueryDeleteDatasetOperator, self).__init__(*args, **kwargs)
 
     def execute(self, context):
+        self.log.info('Dataset id: %s Project id: %s', self.dataset_id, self.project_id)
+
         bq_hook = BigQueryHook(bigquery_conn_id=self.bigquery_conn_id,
                                delegate_to=self.delegate_to)
 
@@ -575,7 +713,8 @@ class BigQueryDeleteDatasetOperator(BaseOperator):
 
         cursor.delete_dataset(
             project_id=self.project_id,
-            dataset_id=self.dataset_id
+            dataset_id=self.dataset_id,
+            delete_contents=self.delete_contents
         )
 
 
@@ -624,12 +763,11 @@ class BigQueryCreateEmptyDatasetOperator(BaseOperator):
         self.dataset_reference = dataset_reference if dataset_reference else {}
         self.delegate_to = delegate_to
 
-        self.log.info('Dataset id: %s', self.dataset_id)
-        self.log.info('Project id: %s', self.project_id)
-
         super(BigQueryCreateEmptyDatasetOperator, self).__init__(*args, **kwargs)
 
     def execute(self, context):
+        self.log.info('Dataset id: %s Project id: %s', self.dataset_id, self.project_id)
+
         bq_hook = BigQueryHook(bigquery_conn_id=self.bigquery_conn_id,
                                delegate_to=self.delegate_to)
 
@@ -640,3 +778,155 @@ class BigQueryCreateEmptyDatasetOperator(BaseOperator):
             project_id=self.project_id,
             dataset_id=self.dataset_id,
             dataset_reference=self.dataset_reference)
+
+
+class BigQueryGetDatasetOperator(BaseOperator):
+    """
+    This operator is used to return the dataset specified by dataset_id.
+
+    :param dataset_id: The id of dataset. Don't need to provide,
+        if datasetId in dataset_reference.
+    :type dataset_id: str
+    :param project_id: The name of the project where we want to create the dataset.
+        Don't need to provide, if projectId in dataset_reference.
+    :type project_id: str
+    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud Platform.
+    :type gcp_conn_id: str
+    :rtype: dataset
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+    """
+
+    template_fields = ('dataset_id', 'project_id')
+    ui_color = '#f0eee4'
+
+    @apply_defaults
+    def __init__(self,
+                 dataset_id,
+                 project_id=None,
+                 gcp_conn_id='google_cloud_default',
+                 delegate_to=None,
+                 *args, **kwargs):
+        self.dataset_id = dataset_id
+        self.project_id = project_id
+        self.gcp_conn_id = gcp_conn_id
+        self.delegate_to = delegate_to
+        super(BigQueryGetDatasetOperator, self).__init__(*args, **kwargs)
+
+    def execute(self, context):
+        bq_hook = BigQueryHook(bigquery_conn_id=self.gcp_conn_id,
+                               delegate_to=self.delegate_to)
+        conn = bq_hook.get_conn()
+        cursor = conn.cursor()
+
+        self.log.info('Start getting dataset: %s:%s', self.project_id, self.dataset_id)
+
+        return cursor.get_dataset(
+            dataset_id=self.dataset_id,
+            project_id=self.project_id)
+
+
+class BigQueryPatchDatasetOperator(BaseOperator):
+    """
+    This operator is used to patch dataset for your Project in BigQuery.
+    It only replaces fields that are provided in the submitted dataset resource.
+
+    :param dataset_id: The id of dataset. Don't need to provide,
+        if datasetId in dataset_reference.
+    :type dataset_id: str
+    :param dataset_resource: Dataset resource that will be provided with request body.
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+    :type dataset_resource: dict
+    :param project_id: The name of the project where we want to create the dataset.
+        Don't need to provide, if projectId in dataset_reference.
+    :type project_id: str
+    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud Platform.
+    :type gcp_conn_id: str
+    :rtype: dataset
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+    """
+
+    template_fields = ('dataset_id', 'project_id')
+    ui_color = '#f0eee4'
+
+    @apply_defaults
+    def __init__(self,
+                 dataset_id,
+                 dataset_resource,
+                 project_id=None,
+                 gcp_conn_id='google_cloud_default',
+                 delegate_to=None,
+                 *args, **kwargs):
+        self.dataset_id = dataset_id
+        self.project_id = project_id
+        self.gcp_conn_id = gcp_conn_id
+        self.dataset_resource = dataset_resource
+        self.delegate_to = delegate_to
+        super(BigQueryPatchDatasetOperator, self).__init__(*args, **kwargs)
+
+    def execute(self, context):
+        bq_hook = BigQueryHook(bigquery_conn_id=self.gcp_conn_id,
+                               delegate_to=self.delegate_to)
+
+        conn = bq_hook.get_conn()
+        cursor = conn.cursor()
+
+        self.log.info('Start patching dataset: %s:%s', self.project_id, self.dataset_id)
+
+        return cursor.patch_dataset(
+            dataset_id=self.dataset_id,
+            dataset_resource=self.dataset_resource,
+            project_id=self.project_id)
+
+
+class BigQueryUpdateDatasetOperator(BaseOperator):
+    """
+    This operator is used to update dataset for your Project in BigQuery.
+    The update method replaces the entire dataset resource, whereas the patch
+    method only replaces fields that are provided in the submitted dataset resource.
+
+    :param dataset_id: The id of dataset. Don't need to provide,
+        if datasetId in dataset_reference.
+    :type dataset_id: str
+    :param dataset_resource: Dataset resource that will be provided with request body.
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+    :type dataset_resource: dict
+    :param project_id: The name of the project where we want to create the dataset.
+        Don't need to provide, if projectId in dataset_reference.
+    :type project_id: str
+    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud Platform.
+    :type gcp_conn_id: str
+    :rtype: dataset
+        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
+    """
+
+    template_fields = ('dataset_id', 'project_id')
+    ui_color = '#f0eee4'
+
+    @apply_defaults
+    def __init__(self,
+                 dataset_id,
+                 dataset_resource,
+                 project_id=None,
+                 gcp_conn_id='google_cloud_default',
+                 delegate_to=None,
+                 *args, **kwargs):
+        self.dataset_id = dataset_id
+        self.project_id = project_id
+        self.gcp_conn_id = gcp_conn_id
+        self.dataset_resource = dataset_resource
+        self.delegate_to = delegate_to
+        super(BigQueryUpdateDatasetOperator, self).__init__(*args, **kwargs)
+
+    def execute(self, context):
+        bq_hook = BigQueryHook(bigquery_conn_id=self.gcp_conn_id,
+                               delegate_to=self.delegate_to)
+
+        conn = bq_hook.get_conn()
+        cursor = conn.cursor()
+
+        self.log.info('Start updating dataset: %s:%s', self.project_id, self.dataset_id)
+
+        return cursor.update_dataset(
+            dataset_id=self.dataset_id,
+            dataset_resource=self.dataset_resource,
+            project_id=self.project_id)

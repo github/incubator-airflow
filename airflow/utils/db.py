@@ -28,6 +28,7 @@ import os
 import contextlib
 
 from airflow import settings
+from airflow.configuration import conf
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 log = LoggingMixin().log
@@ -77,9 +78,23 @@ def provide_session(func):
 
 @provide_session
 def merge_conn(conn, session=None):
-    from airflow.models.connection import Connection
+    from airflow.models import Connection
     if not session.query(Connection).filter(Connection.conn_id == conn.conn_id).first():
         session.add(conn)
+        session.commit()
+
+
+@provide_session
+def add_default_pool_if_not_exists(session=None):
+    from airflow.models.pool import Pool
+    if not Pool.get_pool(Pool.DEFAULT_POOL_NAME, session=session):
+        default_pool = Pool(
+            pool=Pool.DEFAULT_POOL_NAME,
+            slots=conf.getint(section='core', key='non_pooled_task_slot_count',
+                              fallback=128),
+            description="Default pool",
+        )
+        session.add(default_pool)
         session.commit()
 
 
@@ -87,7 +102,7 @@ def initdb(rbac=False):
     session = settings.Session()
 
     from airflow import models
-    from airflow.models.connection import Connection
+    from airflow.models import Connection
     upgradedb()
 
     merge_conn(
@@ -124,6 +139,10 @@ def initdb(rbac=False):
             schema='default',))
     merge_conn(
         Connection(
+            conn_id='pig_cli_default', conn_type='pig_cli',
+            schema='default',))
+    merge_conn(
+        Connection(
             conn_id='hiveserver2_default', conn_type='hiveserver2',
             host='localhost',
             schema='default', port=10000))
@@ -156,7 +175,7 @@ def initdb(rbac=False):
     merge_conn(
         Connection(
             conn_id='http_default', conn_type='http',
-            host='https://www.google.com/'))
+            host='https://www.httpbin.org/'))
     merge_conn(
         Connection(
             conn_id='mssql_default', conn_type='mssql',
@@ -190,8 +209,7 @@ def initdb(rbac=False):
             extra='{"path": "/"}'))
     merge_conn(
         Connection(
-            conn_id='aws_default', conn_type='aws',
-            extra='{"region_name": "us-east-1"}'))
+            conn_id='aws_default', conn_type='aws'))
     merge_conn(
         Connection(
             conn_id='spark_default', conn_type='spark',
@@ -356,6 +374,7 @@ def upgradedb():
     config.set_main_option('script_location', directory.replace('%', '%%'))
     config.set_main_option('sqlalchemy.url', settings.SQL_ALCHEMY_CONN.replace('%', '%%'))
     command.upgrade(config, 'heads')
+    add_default_pool_if_not_exists()
 
 
 def resetdb(rbac):
@@ -363,21 +382,39 @@ def resetdb(rbac):
     Clear out the database
     """
     from airflow import models
+    # We need to add this model manually to get reset working well
+    # noinspection PyUnresolvedReferences
+    from airflow.models.serialized_dag import SerializedDagModel  # noqa: F401
+    # noinspection PyUnresolvedReferences
+    from airflow.jobs.base_job import BaseJob  # noqa: F401
 
     # alembic adds significant import time, so we import it lazily
     from alembic.migration import MigrationContext
 
     log.info("Dropping tables that exist")
 
-    models.base.Base.metadata.drop_all(settings.engine)
-    mc = MigrationContext.configure(settings.engine)
-    if mc._version.exists(settings.engine):
-        mc._version.drop(settings.engine)
+    connection = settings.engine.connect()
+    models.base.Base.metadata.drop_all(connection)
+    mc = MigrationContext.configure(connection)
+    if mc._version.exists(connection):
+        mc._version.drop(connection)
 
     if rbac:
         # drop rbac security tables
         from flask_appbuilder.security.sqla import models
         from flask_appbuilder.models.sqla import Base
-        Base.metadata.drop_all(settings.engine)
+        Base.metadata.drop_all(connection)
+    from flask_appbuilder.models.sqla import Base
+    Base.metadata.drop_all(connection)
 
     initdb(rbac)
+
+
+@provide_session
+def checkdb(session=None):
+    """
+    Checks if the database works.
+    :param session: session of the sqlalchemy
+    """
+    session.execute('select 1 as is_alive;')
+    log.info("Connection successful.")

@@ -22,7 +22,7 @@ import functools
 import pendulum
 from io import BytesIO as IO
 from flask import after_this_request, flash, redirect, request, url_for, g
-from airflow.models.log import Log
+from airflow.models import Log
 from airflow.utils.db import create_session
 
 
@@ -43,13 +43,13 @@ def action_logging(f):
                 event=f.__name__,
                 task_instance=None,
                 owner=user,
-                extra=str(list(request.args.items())),
-                task_id=request.args.get('task_id'),
-                dag_id=request.args.get('dag_id'))
+                extra=str(list(request.values.items())),
+                task_id=request.values.get('task_id'),
+                dag_id=request.values.get('dag_id'))
 
-            if 'execution_date' in request.args:
+            if 'execution_date' in request.values:
                 log.execution_date = pendulum.parse(
-                    request.args.get('execution_date'))
+                    request.values.get('execution_date'))
 
             session.add(log)
 
@@ -102,7 +102,7 @@ def has_dag_access(**dag_kwargs):
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs):
             has_access = self.appbuilder.sm.has_access
-            dag_id = request.args.get('dag_id')
+            dag_id = request.values.get('dag_id')
             # if it is false, we need to check whether user has write access on the dag
             can_dag_edit = dag_kwargs.get('can_dag_edit', False)
 

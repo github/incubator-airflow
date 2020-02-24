@@ -1,4 +1,4 @@
-..  Licensed to the Apache Software Foundation (ASF) under one
+ .. Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
     distributed with this work for additional information
     regarding copyright ownership.  The ASF licenses this file
@@ -6,9 +6,9 @@
     "License"); you may not use this file except in compliance
     with the License.  You may obtain a copy of the License at
 
-..    http://www.apache.org/licenses/LICENSE-2.0
+ ..   http://www.apache.org/licenses/LICENSE-2.0
 
-..  Unless required by applicable law or agreed to in writing,
+ .. Unless required by applicable law or agreed to in writing,
     software distributed under the License is distributed on an
     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
     KIND, either express or implied.  See the License for the
@@ -37,9 +37,9 @@ Azure Blob Storage
 ''''''''''''''''''
 
 All classes communicate via the Window Azure Storage Blob protocol. Make sure that a
-Airflow connection of type `wasb` exists. Authorization can be done by supplying a
+Airflow connection of type ``wasb`` exists. Authorization can be done by supplying a
 login (=Storage account name) and password (=KEY), or login and SAS token in the extra
-field (see connection `wasb_default` for an example).
+field (see connection ``wasb_default`` for an example).
 
 :class:`airflow.contrib.hooks.wasb_hook.WasbHook`
     Interface with Azure Blob Storage.
@@ -61,9 +61,9 @@ Azure File Share
 ''''''''''''''''
 
 Cloud variant of a SMB file share. Make sure that a Airflow connection of
-type `wasb` exists. Authorization can be done by supplying a login (=Storage account name)
+type ``wasb`` exists. Authorization can be done by supplying a login (=Storage account name)
 and password (=Storage account key), or login and SAS token in the extra field
-(see connection `wasb_default` for an example).
+(see connection ``wasb_default`` for an example).
 
 :class:`airflow.contrib.hooks.azure_fileshare_hook.AzureFileShareHook`:
     Interface with Azure File Share.
@@ -78,9 +78,9 @@ Azure CosmosDB
 ''''''''''''''
 
 AzureCosmosDBHook communicates via the Azure Cosmos library. Make sure that a
-Airflow connection of type `azure_cosmos` exists. Authorization can be done by supplying a
+Airflow connection of type ``azure_cosmos`` exists. Authorization can be done by supplying a
 login (=Endpoint uri), password (=secret key) and extra fields database_name and collection_name to specify the
-default database and collection to use (see connection `azure_cosmos_default` for an example).
+default database and collection to use (see connection ``azure_cosmos_default`` for an example).
 
 :class:`airflow.contrib.hooks.azure_cosmos_hook.AzureCosmosDBHook`
     Interface with Azure CosmosDB.
@@ -96,9 +96,9 @@ Azure Data Lake
 '''''''''''''''
 
 AzureDataLakeHook communicates via a REST API compatible with WebHDFS. Make sure that a
-Airflow connection of type `azure_data_lake` exists. Authorization can be done by supplying a
+Airflow connection of type ``azure_data_lake`` exists. Authorization can be done by supplying a
 login (=Client ID), password (=Client Secret) and extra fields tenant (Tenant) and account_name (Account Name)
-(see connection `azure_data_lake_default` for an example).
+(see connection ``azure_data_lake_default`` for an example).
 
 :class:`airflow.contrib.hooks.azure_data_lake_hook.AzureDataLakeHook`
     Interface with Azure Data Lake.
@@ -228,8 +228,11 @@ AWS Kinesis
 :class:`airflow.contrib.hooks.aws_firehose_hook.AwsFirehoseHook`
     Interface with AWS Kinesis Firehose.
 
+
 Amazon SageMaker
 ''''''''''''''''
+
+For more instructions on using Amazon SageMaker in Airflow, please see `the SageMaker Python SDK README`_.
 
 .. _the SageMaker Python SDK README: https://github.com/aws/sagemaker-python-sdk/blob/master/src/sagemaker/workflow/README.rst
 
@@ -255,15 +258,14 @@ Amazon SageMaker
     Create a SageMaker endpoint.
 
 
-
 .. _Databricks:
 
 Databricks
 ----------
 
-`Databricks <https://databricks.com/>`__ has contributed an Airflow operator which enables
-submitting runs to the Databricks platform. Internally the operator talks to the
-``api/2.0/jobs/runs/submit`` `endpoint <https://docs.databricks.com/api/latest/jobs.html#runs-submit>`_.
+With contributions from `Databricks <https://databricks.com/>`__, Airflow has several operators
+which enable the submitting and running of jobs to the Databricks platform. Internally the
+operators talk to the ``api/2.0/jobs/runs/submit`` `endpoint <https://docs.databricks.com/api/latest/jobs.html#runs-submit>`_.
 
 
 :class:`airflow.contrib.operators.databricks_operator.DatabricksSubmitRunOperator`
@@ -271,6 +273,12 @@ submitting runs to the Databricks platform. Internally the operator talks to the
     `api/2.0/jobs/runs/submit
     <https://docs.databricks.com/api/latest/jobs.html#runs-submit>`_
     API endpoint.
+
+:class:`airflow.contrib.operators.databricks_operator.DatabricksRunNowOperator`
+    Runs an existing Spark job in Databricks using the
+        `api/2.0/jobs/run-now
+        <https://docs.databricks.com/api/latest/jobs.html#run-now>`_
+        API endpoint.
 
 
 .. _GCP:
@@ -324,6 +332,18 @@ BigQuery
 
 :class:`airflow.contrib.operators.bigquery_operator.BigQueryDeleteDatasetOperator`
     Deletes an existing BigQuery dataset.
+
+:class:`airflow.contrib.operators.bigquery_operator.BigQueryGetDatasetOperator`
+    This operator is used to return the dataset specified by dataset_id.
+
+:class:`airflow.contrib.operators.bigquery_operator.BigQueryUpdateDatasetOperator`
+    This operator is used to update dataset for your Project in BigQuery.
+    The update method replaces the entire dataset resource, whereas the patch
+    method only replaces fields that are provided in the submitted dataset resource.
+
+:class:`airflow.contrib.operators.bigquery_operator.BigQueryPatchDatasetOperator`
+    This operator is used to patch dataset for your Project in BigQuery.
+    It only replaces fields that are provided in the submitted dataset resource.
 
 :class:`airflow.contrib.operators.bigquery_operator.BigQueryOperator`
     Executes BigQuery SQL queries in a specific BigQuery database.
@@ -423,6 +443,15 @@ Cloud Bigtable
 
 
 They also use :class:`airflow.contrib.hooks.gcp_bigtable_hook.BigtableHook` to communicate with Google Cloud Platform.
+
+Cloud Build
+'''''''''''
+
+:class:`airflow.contrib.operators.gcp_cloud_build_operator.CloudBuildCreateBuildOperator`
+     Starts a build with the specified configuration.
+
+
+They also use :class:`airflow.contrib.hooks.gcp_cloud_build_hook.CloudBuildHook` to communicate with Google Cloud Platform.
 
 
 Compute Engine
@@ -577,6 +606,27 @@ Cloud Storage
 :class:`airflow.contrib.operators.mysql_to_gcs.MySqlToGoogleCloudStorageOperator`
     Copy data from any MySQL Database to Google cloud storage in JSON format.
 
+:class:`airflow.contrib.operators.mssql_to_gcs.MsSqlToGoogleCloudStorageOperator`
+    Copy data from any Microsoft SQL Server Database to Google Cloud Storage in JSON format.
+
+:class:`airflow.contrib.sensors.gcs_sensor.GoogleCloudStorageObjectSensor`
+    Checks for the existence of a file in Google Cloud Storage.
+
+:class:`airflow.contrib.sensors.gcs_sensor.GoogleCloudStorageObjectUpdatedSensor`
+    Checks if an object is updated in Google Cloud Storage.
+
+:class:`airflow.contrib.sensors.gcs_sensor.GoogleCloudStoragePrefixSensor`
+    Checks for the existence of a objects at prefix in Google Cloud Storage.
+
+:class:`airflow.contrib.sensors.gcs_sensor.GoogleCloudStorageUploadSessionCompleteSession`
+    Checks for changes in the number of objects at prefix in Google Cloud Storage
+    bucket and returns True if the inactivity period has passed with no
+    increase in the number of objects for situations when many objects
+    are being uploaded to a bucket with no formal success signal.
+
+:class:`airflow.contrib.operators.gcs_delete_operator.GoogleCloudStorageDeleteOperator`
+    Deletes objects from a Google Cloud Storage bucket.
+
 
 They also use :class:`airflow.contrib.hooks.gcs_hook.GoogleCloudStorageHook` to communicate with Google Cloud Platform.
 
@@ -644,8 +694,43 @@ Cloud Vision Product Search Operators
     Creates a new ReferenceImage resource.
 :class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionRemoveProductFromProductSetOperator`
     Removes a Product from the specified ProductSet.
+:class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionAnnotateImageOperator`
+    Run image detection and annotation for an image.
+:class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectTextOperator`
+    Run text detection for an image
+:class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectDocumentTextOperator`
+    Run document text detection for an image
+:class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectImageLabelsOperator`
+    Run image labels detection for an image
+:class:`airflow.contrib.operators.gcp_vision_operator.CloudVisionDetectImageSafeSearchOperator`
+    Run safe search detection for an image
 
 They also use :class:`airflow.contrib.hooks.gcp_vision_hook.CloudVisionHook` to communicate with Google Cloud Platform.
+
+Cloud Text to Speech
+''''''''''''''''''''
+
+:class:`airflow.contrib.operators.gcp_text_to_speech_operator.GcpTextToSpeechSynthesizeOperator`
+    Synthesizes input text into audio file and stores this file to GCS.
+
+They also use :class:`airflow.contrib.hooks.gcp_text_to_speech_hook.GCPTextToSpeechHook` to communicate with Google Cloud Platform.
+
+Cloud Speech to Text
+''''''''''''''''''''
+
+:class:`airflow.contrib.operators.gcp_speech_to_text_operator.GcpSpeechToTextRecognizeSpeechOperator`
+    Recognizes speech in audio input and returns text.
+
+They also use :class:`airflow.contrib.hooks.gcp_speech_to_text_hook.GCPSpeechToTextHook` to communicate with Google Cloud Platform.
+
+Cloud Speech Translate Operators
+--------------------------------
+
+:class:`airflow.contrib.operators.gcp_translate_speech_operator.GcpTranslateSpeechOperator`
+    Recognizes speech in audio input and translates it.
+
+They also use :class:`airflow.contrib.hooks.gcp_speech_to_text_hook.GCPSpeechToTextHook` and
+    :class:`airflow.contrib.hooks.gcp_translate_hook.CloudTranslateHook` to communicate with Google Cloud Platform.
 
 Cloud Translate
 '''''''''''''''
@@ -656,6 +741,18 @@ Cloud Translate Text Operators
 :class:`airflow.contrib.operators.gcp_translate_operator.CloudTranslateTextOperator`
     Translate a string or list of strings.
 
+
+Cloud Video Intelligence
+''''''''''''''''''''''''
+
+:class:`airflow.contrib.operators.gcp_video_intelligence_operator.CloudVideoIntelligenceDetectVideoLabelsOperator`
+    Performs video annotation, annotating video labels.
+:class:`airflow.contrib.operators.gcp_video_intelligence_operator.CloudVideoIntelligenceDetectVideoExplicitContentOperator`
+    Performs video annotation, annotating explicit content.
+:class:`airflow.contrib.operators.gcp_video_intelligence_operator.CloudVideoIntelligenceDetectVideoShotsOperator`
+    Performs video annotation, annotating video shots.
+
+They also use :class:`airflow.contrib.hooks.gcp_video_intelligence_hook.CloudVideoIntelligenceHook` to communicate with Google Cloud Platform.
 
 Google Kubernetes Engine
 ''''''''''''''''''''''''
@@ -690,6 +787,154 @@ Google Natural Language
     Classifies a document into categories.
 
 They also use :class:`airflow.contrib.hooks.gcp_natural_language_operator.CloudNaturalLanguageHook` to communicate with Google Cloud Platform.
+
+
+Google Cloud Data Loss Prevention (DLP)
+'''''''''''''''''''''''''''''''''''''''
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCancelDLPJobOperator`
+    Starts asynchronous cancellation on a long-running DlpJob.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCreateDeidentifyTemplateOperator`
+    Creates a DeidentifyTemplate for re-using frequently used configuration for
+    de-identifying content, images, and storage.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCreateDLPJobOperator`
+    Creates a new job to inspect storage or calculate risk metrics.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCreateInspectTemplateOperator`
+    Creates an InspectTemplate for re-using frequently used configuration for
+    inspecting content, images, and storage.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCreateJobTriggerOperator`
+    Creates a job trigger to run DLP actions such as scanning storage for sensitive
+    information on a set schedule.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPCreateStoredInfoTypeOperator`
+    Creates a pre-built stored infoType to be used for inspection.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeidentifyContentOperator`
+    De-identifies potentially sensitive info from a ContentItem. This method has limits
+    on input size and output size.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeleteDeidentifyTemplateOperator`
+    Deletes a DeidentifyTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeleteDlpJobOperator`
+    Deletes a long-running DlpJob. This method indicates that the client is no longer
+    interested in the DlpJob result. The job will be cancelled if possible.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeleteInspectTemplateOperator`
+    Deletes an InspectTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeleteJobTriggerOperator`
+    Deletes a job trigger.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPDeleteStoredInfoTypeOperator`
+    Deletes a stored infoType.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPGetDeidentifyTemplateOperator`
+    Gets a DeidentifyTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPGetDlpJobOperator`
+    Gets the latest state of a long-running DlpJob.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPGetInspectTemplateOperator`
+    Gets an InspectTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPGetJobTripperOperator`
+    Gets a job trigger.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPGetStoredInfoTypeOperator`
+    Gets a stored infoType.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPInspectContentOperator`
+    Finds potentially sensitive info in content. This method has limits on
+    input size, processing time, and output size.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListDeidentifyTemplatesOperator`
+    Lists DeidentifyTemplates.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListDlpJobsOperator`
+    Lists DlpJobs that match the specified filter in the request.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListInfoTypesOperator`
+    Returns a list of the sensitive information types that the DLP API supports.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListInspectTemplatesOperator`
+    Lists InspectTemplates.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListJobTriggersOperator`
+    Lists job triggers.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPListStoredInfoTypesOperator`
+    Lists stored infoTypes.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPRedactImageOperator`
+    Redacts potentially sensitive info from an image. This method has limits on
+    input size, processing time, and output size.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPReidentifyContentOperator`
+    Re-identifies content that has been de-identified.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPUpdateDeidentifyTemplateOperator`
+    Updates the DeidentifyTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPUpdateInspectTemplateOperator`
+    Updates the InspectTemplate.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPUpdateJobTriggerOperator`
+    Updates a job trigger.
+
+:class:`airflow.contrib.operators.gcp_dlp_operator.CloudDLPUpdateStoredInfoTypeOperator`
+    Updates the stored infoType by creating a new version.
+
+They also use :class:`airflow.controb.hooks.gcp_dlp_hook.CloudDLPHook` to communicate with Google Cloud Platform.
+
+
+Google Cloud Tasks
+''''''''''''''''''
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueueCreateOperator`
+    Creates a queue in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueueUpdateOperator`
+    Updates a queue in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueueGetOperator`
+    Gets a queue from Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueuesListOperator`
+    Lists queues from Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueueDeleteOperator`
+    Deletes a queue from Cloud Tasks, even if it has tasks in it.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueuePurgeOperator`
+    Purges a queue by deleting all of its tasks from Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueuePauseOperator`
+    Pauses a queue in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksQueueResumeOperator`
+    Resumes a queue in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksTaskCreateOperator`
+    Creates a task in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksTaskGetOperator`
+    Gets a task from Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksTasksListOperator`
+    Lists the tasks in Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksTaskDeleteOperator`
+    Deletes a task from Cloud Tasks.
+
+:class:`airflow.contrib.operators.gcp_tasks_operator.CloudTasksTaskRunOperator`
+    Forces to run a task in Cloud Tasks.
+
+They also use :class:`airflow.contrib.hooks.gcp_tasks_hook.CloudTasksHook` to communicate with Google Cloud Platform.
 
 
 .. _Qubole:

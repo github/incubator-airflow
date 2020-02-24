@@ -22,7 +22,7 @@ from alembic import context
 from logging.config import fileConfig
 
 from airflow import settings
-from airflow.jobs import models
+from airflow import models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -59,8 +59,11 @@ def run_migrations_offline():
 
     """
     context.configure(
-        url=settings.SQL_ALCHEMY_CONN, target_metadata=target_metadata,
-        literal_binds=True, compare_type=COMPARE_TYPE)
+        url=settings.SQL_ALCHEMY_CONN,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        compare_type=COMPARE_TYPE,
+        render_as_batch=True)
 
     with context.begin_transaction():
         context.run_migrations()
@@ -80,6 +83,7 @@ def run_migrations_online():
             connection=connection,
             target_metadata=target_metadata,
             compare_type=COMPARE_TYPE,
+            render_as_batch=True
         )
 
         with context.begin_transaction():

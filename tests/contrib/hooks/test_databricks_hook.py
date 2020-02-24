@@ -31,7 +31,7 @@ from airflow.contrib.hooks.databricks_hook import (
     SUBMIT_RUN_ENDPOINT
 )
 from airflow.exceptions import AirflowException
-from airflow.models.connection import Connection
+from airflow.models import Connection
 from airflow.utils import db
 from tests.compat import mock
 
@@ -400,7 +400,8 @@ class DatabricksHookTokenTest(unittest.TestCase):
         conn = session.query(Connection) \
             .filter(Connection.conn_id == DEFAULT_CONN_ID) \
             .first()
-        conn.extra = json.dumps({'token': TOKEN})
+        conn.extra = json.dumps({'token': TOKEN, 'host': HOST})
+
         session.commit()
 
         self.hook = DatabricksHook()

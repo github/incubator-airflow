@@ -30,7 +30,7 @@ import sys
 from argparse import Namespace
 from datetime import datetime
 
-from airflow.models.log import Log
+from airflow.models import Log
 from airflow.utils import cli_action_loggers
 
 
@@ -60,8 +60,9 @@ def action_logging(f):
         """
         An wrapper for cli functions. It assumes to have Namespace instance
         at 1st positional argument
+
         :param args: Positional argument. It assumes to have Namespace instance
-        at 1st positional argument
+            at 1st positional argument
         :param kwargs: A passthrough keyword argument
         """
         assert args
