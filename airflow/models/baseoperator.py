@@ -27,7 +27,7 @@ import warnings
 
 from abc import ABCMeta, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Callable, ClassVar, Dict, FrozenSet, Iterable, List, Optional, Set, Type, Union
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Set, Type, Union
 
 
 import attr
