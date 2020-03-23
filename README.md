@@ -29,3 +29,7 @@ This is a fork of [Airflow 1.10.9](https://github.com/apache/airflow/tree/1.10.9
 - Fix `bail.` button onclick action to redirect correctly to the DAG page
 - Fix too many notifications bug that would call the on failure notification callback on every scheduler loop https://github.com/github/airflow-sources/issues/2712
 
+
+Every change from our fork to the original project can be checked by comparing the
+changes from our `github/incubator-airflow/gh-1.10.9` with the open source project
+`apache/airflow:1.10.9`. For example [link](https://github.com/apache/airflow/compare/1.10.9...github:gh-1.10.9?expand=1)
