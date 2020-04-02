@@ -38,10 +38,7 @@ class StandardTaskRunner(BaseTaskRunner):
         self.dag = local_task_job.task_instance.task.dag
 
     def start(self):
-        if CAN_FORK and not self.run_as_user:
-            self.process = self._start_by_fork()
-        else:
-            self.process = self._start_by_exec()
+        self.process = self._start_by_exec()
 
     def _start_by_exec(self):
         subprocess = self.run_command()
