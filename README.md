@@ -30,6 +30,7 @@ This is a fork of [Airflow 1.10.10](https://github.com/apache/airflow/tree/1.10.
 - Fix too many notifications bug that would call the on failure notification callback on every scheduler loop https://github.com/github/airflow-sources/issues/2712
 - Fix logging error where the Subprocess would write the logs into the console instead of to the worker log file. This aims to fix the bug described in the Open Source Jira board [1](https://issues.apache.org/jira/browse/AIRFLOW-7030) and [2](https://issues.apache.org/jira/browse/AIRFLOW-6904).
 - Introduced legacy `get_conn` in `GoogleCloudStorageHook`, to make it backwards compatible with some Operators of `airflow-sources` (specifically, the method `_get_gcs_blob_media_request` from `GCSToHDFSOperator`).
+- Removed `state` from `column_editable_list` in `DagRunModelView` to fix UI bug: https://github.com/github/airflow-sources/issues/3306#issuecomment-619878627
 
 Every change from our fork to the original project can be checked by comparing the
 changes from our `github/incubator-airflow/gh-1.10.10` with the open source project
