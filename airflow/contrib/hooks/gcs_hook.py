@@ -27,6 +27,8 @@ from google.cloud import storage
 from airflow.contrib.hooks.gcp_api_base_hook import GoogleCloudBaseHook
 from airflow.exceptions import AirflowException
 
+from googleapiclient.discovery import build  # See get_conn_legacy documentation
+
 
 class GoogleCloudStorageHook(GoogleCloudBaseHook):
     """
@@ -51,6 +53,20 @@ class GoogleCloudStorageHook(GoogleCloudBaseHook):
                                         project=self.project_id)
 
         return self._conn
+
+    def get_conn_legacy(self):
+        """
+        Returns a Google Cloud Storage service object.
+        This is the `get_conn` method that we previously had in 1.10.3 before
+        the upgrade. We still need it because one of our Operators (GCSToHDFSOperator)
+        use the legacy `get_conn` object (googleapiclient.discovery.Resource),
+        instead of the new one (google.cloud.storage.client.Client).
+        We'd need to refactor that Operator to make use of the new object, but
+        that is a higher effort probably outside of the Airflow upgrade.
+        """
+        http_authorized = self._authorize()
+        return build(
+            'storage', 'v1', http=http_authorized, cache_discovery=False)
 
     # pylint:disable=redefined-builtin
     def copy(self, source_bucket, source_object, destination_bucket=None,
