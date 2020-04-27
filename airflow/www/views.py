@@ -2809,7 +2809,7 @@ class DagRunModelView(ModelViewOnly):
     verbose_name_plural = "DAG Runs"
     can_edit = True
     can_create = True
-    column_editable_list = ('state',)
+    column_editable_list = ()
     verbose_name = "dag run"
     column_default_sort = ('execution_date', True)
     form_choices = {
