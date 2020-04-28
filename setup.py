@@ -625,7 +625,7 @@ def do_setup():
         install_requires=INSTALL_REQUIREMENTS,
         setup_requires=[
             'bowler',
-            'docutils'
+            'docutils',
             'gitpython',
             'setuptools',
             'wheel',
