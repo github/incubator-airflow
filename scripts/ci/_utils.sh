@@ -1443,8 +1443,24 @@ function run_generate_requirements() {
             | tee -a "${OUTPUT_LOG}"
 }
 
-function set_mysql_encoding() {
-    export MYSQL_ENCODING="utf8mb4"
+function run_prepare_packages() {
+    docker run "${EXTRA_DOCKER_FLAGS[@]}" \
+        --entrypoint "/usr/local/bin/dumb-init"  \
+        --env PYTHONDONTWRITEBYTECODE \
+        --env VERBOSE \
+        --env VERBOSE_COMMANDS \
+        --env HOST_USER_ID="$(id -ur)" \
+        --env HOST_GROUP_ID="$(id -gr)" \
+        --env UPGRADE_WHILE_GENERATING_REQUIREMENTS \
+        --env PYTHON_MAJOR_MINOR_VERSION \
+        --env SHOW_GENERATE_REQUIREMENTS_INSTRUCTIONS \
+        -t \
+        -v "${AIRFLOW_SOURCES}:/opt/airflow" \
+        --rm \
+        "${AIRFLOW_CI_IMAGE}" \
+        "--" "/opt/airflow/scripts/ci/in_container/run_prepare_packages.sh" "${@}" \
+        | tee -a "${OUTPUT_LOG}"
+}
 
     if [[ ${MYSQL_VERSION:="5.7"} == "5.6" ]]; then
         # In MySQL 5.6 maximum size of the index is 1536 bytes and it is too small for
