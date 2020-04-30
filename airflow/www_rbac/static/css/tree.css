@@ -60,7 +60,7 @@ rect.upstream_failed {
     fill: orange;
 }
 rect.up_for_retry {
-    fill: mediumslateblue;
+    fill: yellow;
 }
 rect.up_for_reschedule {
     fill: turquoise;
