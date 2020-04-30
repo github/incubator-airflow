@@ -80,7 +80,7 @@ span.success{
     background-color: green;
 }
 span.up_for_retry{
-    background-color: gold;
+    background-color: yellow;
 }
 span.up_for_reschedule{
     background-color: turquoise;
@@ -89,16 +89,16 @@ span.started{
     background-color: lime;
 }
 span.error{
-    background-color: red;
+    background-color: firebrick;
 }
 span.queued{
-    background-color: gray;
+    background-color: darkgray;
 }
 span.upstream_failed{
     background-color: orange;
 }
 span.skipped{
-    background-color: pink;
+    background-color: darkorchid;
 }
 .tooltip-inner {
     max-width: 500px;
