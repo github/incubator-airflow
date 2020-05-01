@@ -52,19 +52,19 @@ g.node.success rect {
     stroke: green;
 }
 g.node.up_for_retry rect {
-    stroke: gold;
+    stroke: yellow;
 }
 g.node.up_for_reschedule rect{
     stroke: turquoise;
 }
 g.node.queued rect {
-    stroke: grey;
+    stroke: darkgray;
 }
 g.node.running rect{
     stroke: lime;
 }
 g.node.failed rect {
-    stroke: red;
+    stroke: firebrick;
 }
 g.node.shutdown rect{
     stroke: blue;
@@ -73,7 +73,7 @@ g.node.upstream_failed rect{
     stroke: orange;
 }
 g.node.skipped rect{
-    stroke: pink;
+    stroke: darkorchid;
 }
 div#svg_container {
  border: 1px solid black;
