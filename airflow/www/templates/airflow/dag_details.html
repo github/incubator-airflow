@@ -16,6 +16,7 @@
 
 #}
 {% extends "airflow/dag.html" %}
+{% block title %}Details - {{ dag.dag_id }}{% endblock %}
 
 {% block title %}
     {{ title }}
