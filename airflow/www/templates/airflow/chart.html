@@ -16,7 +16,7 @@
 
 #}
 {% extends "airflow/dag.html" %}
-{% block title %}Tasks - {{ dag.dag_id }}{% endblock %}
+{% block title %}{{ block_title }} - {{ dag.dag_id }}{% endblock %}
 
 {% block head_css %}
 {{ super() }}
