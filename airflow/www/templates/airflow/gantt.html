@@ -16,6 +16,7 @@
 
 #}
 {% extends "airflow/dag.html" %}
+{% block title %}Gantt - {{ dag.dag_id }}{% endblock %}
 
 {% block head_css %}
 {{ super() }}
