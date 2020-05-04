@@ -18,7 +18,7 @@
 #}
 
 {% extends "airflow/dag.html" %}
-{% block title %}Airflow - DAGs{% endblock %}
+{% block title %}Tree View - {{ dag.dag_id }}{% endblock %}
 
 {% block head_css %}
 {{ super() }}
