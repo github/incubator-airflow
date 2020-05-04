@@ -48,10 +48,10 @@ rect.running {
     fill: lime;
 }
 rect.failed {
-    fill: red;
+    fill: firebrick;
 }
 rect.queued {
-    fill: gray;
+    fill: darkgray;
 }
 rect.shutdown {
     fill: blue;
@@ -60,13 +60,13 @@ rect.upstream_failed {
     fill: orange;
 }
 rect.up_for_retry {
-    fill: gold;
+    fill: yellow;
 }
 rect.up_for_reschedule {
     fill: turquoise;
 }
 rect.skipped {
-    fill: pink;
+    fill: darkorchid;
 }
 .tooltip.in {
     opacity: 1;
