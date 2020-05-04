@@ -16,11 +16,7 @@
 
 #}
 {% extends "airflow/dag.html" %}
-{% block title %}Details - {{ dag.dag_id }}{% endblock %}
-
-{% block title %}
-    {{ title }}
-{% endblock %}
+{% block title %}DAG Details - {{ dag.dag_id }}{% endblock %}
 
 {% block body %}
     {{ super() }}
