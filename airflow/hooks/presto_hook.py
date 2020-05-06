@@ -53,7 +53,7 @@ class PrestoHook(DbApiHook):
             host=db.host,
             port=db.port,
             username=db.login,
-            source=db.extra_dejson.get('source', 'airflow'),
+            # source=db.extra_dejson.get('source', 'airflow'),
             protocol=db.extra_dejson.get('protocol', 'http'),
             catalog=db.extra_dejson.get('catalog', 'hive'),
             requests_kwargs=reqkwargs,
