@@ -553,7 +553,7 @@ class SchedulerJob(BaseJob):
                     task = dag.get_task(sla.task_id)
                 except TaskNotFound:
                     # task already deleted from DAG, skip it
-                    self.log.warning(
+                    self.log.debug(
                         "Task %s doesn't exist in DAG anymore, skipping SLA miss notification.",
                         sla.task_id)
                     continue
