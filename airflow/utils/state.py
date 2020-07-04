@@ -17,8 +17,8 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-from airflow.settings import STATE_COLORS
 from __future__ import unicode_literals
+from airflow.settings import STATE_COLORS
 
 from builtins import object
 
