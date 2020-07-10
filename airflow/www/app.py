@@ -39,6 +39,7 @@ from airflow.logging_config import configure_logging
 from airflow import jobs
 from airflow import settings
 from airflow.utils.net import get_hostname
+from airflow.settings import STATE_COLORS
 
 csrf = CSRFProtect()
 
@@ -189,7 +190,8 @@ def create_app(config=None, testing=False):
                 'log_auto_tailing_offset': conf.getint(
                     'webserver', 'log_auto_tailing_offset', fallback=30),
                 'log_animation_speed': conf.getint(
-                    'webserver', 'log_animation_speed', fallback=1000)
+                    'webserver', 'log_animation_speed', fallback=1000),
+                'state_color_mapping': STATE_COLORS
             }
 
         @app.before_request
