@@ -164,7 +164,7 @@ def get_dags(args):
 
 
 @cli_utils.action_logging
-def print_sys_path():
+def print_sys_path(args):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
