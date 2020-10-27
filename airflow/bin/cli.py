@@ -2059,6 +2059,10 @@ class CLIFactory(object):
     }
     subparsers = (
         {
+            'func': print_sys_path,
+            'help': "Kim's debug func.",
+            'args': (),
+        }, {
             'func': backfill,
             'help': "Run subsections of a DAG for a specified date range. "
                     "If reset_dag_run option is used,"
@@ -2258,7 +2262,7 @@ class CLIFactory(object):
     )
     subparsers_dict = {sp['func'].__name__: sp for sp in subparsers}
     dag_subparsers = (
-        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause', 'list_dag_runs')
+        'list_tasks', 'backfill', 'test', 'run', 'pause', 'unpause', 'list_dag_runs', 'print_sys_path')
 
     @classmethod
     def get_parser(cls, dag_parser=False):
