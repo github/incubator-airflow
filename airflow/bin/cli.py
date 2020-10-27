@@ -164,6 +164,15 @@ def get_dags(args):
 
 
 @cli_utils.action_logging
+def print_sys_path():
+    logging.basicConfig(
+        level=settings.LOGGING_LEVEL,
+        format=settings.SIMPLE_LOG_FORMAT)
+    import sys
+    logging.info(sys.path)
+
+
+@cli_utils.action_logging
 def backfill(args, dag=None):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
