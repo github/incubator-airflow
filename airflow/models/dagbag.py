@@ -103,6 +103,9 @@ class DagBag(BaseDagBag, LoggingMixin):
         self.has_logged = False
         self.store_serialized_dags = store_serialized_dags
 
+        import sys
+        sys.path.insert(0, "/home/airflow")
+
         self.collect_dags(
             dag_folder=dag_folder,
             include_examples=include_examples,
